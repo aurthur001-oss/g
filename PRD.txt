@@ -1,0 +1,432 @@
+PRODUCT REQUIREMENTS DOCUMENT
+Ghost Calling System
+Module Name
+
+Ghost Call Engine (GCE)
+
+Product
+
+Ghost OSINT Cloud
+
+1. Executive Summary
+
+The Ghost Call Engine (GCE) provides secure, browser-based real-time video communication between registered platform users.
+
+The system enables:
+
+• peer-to-peer calls
+• multi-participant meetings
+• ephemeral in-meeting chat
+• link-based meeting access
+• metadata-only logging
+
+All communication content (voice, video, chat) will not be stored.
+
+Only administrative metadata is logged for system monitoring, security, and analytics.
+
+The system must support:
+
+one-to-one calls
+
+multi-user conferences
+
+screen sharing
+
+temporary chat
+
+meeting links
+
+2. Objectives
+
+Primary objectives:
+
+Provide Zoom-like meeting functionality
+
+Maintain strict privacy for communications
+
+Provide admin monitoring through metadata logs
+
+Enable scalable video infrastructure
+
+3. System Scope
+
+The call system supports:
+
+• direct user calls
+• scheduled meetings
+• instant meetings
+• link-based meeting joining
+
+Supported devices:
+
+• desktop browsers
+• mobile browsers
+
+Initial supported browsers:
+
+Chrome
+Edge
+Firefox
+Safari
+
+4. Functional Requirements
+4.1 Call Types
+
+The system must support three call types.
+
+Direct User Call
+
+User A calls User B.
+
+Example:
+
+aurthur@ghost.in calls analyst@ghost.in
+
+Features:
+
+• ringing notification
+• accept / decline
+
+Instant Meeting
+
+User starts meeting immediately.
+
+System generates meeting link.
+
+Example:
+
+ghost.in/c/missionbrief
+Scheduled Meeting
+
+User schedules meeting for future.
+
+Participants receive link.
+
+5. Call Creation Workflow
+
+Step 1
+User presses Start Call
+
+Step 2
+System generates:
+
+Meeting ID
+Meeting URL
+Host Token
+
+Example meeting link:
+
+ghost.in/c/73948273
+
+Step 3
+Meeting room created in signaling server.
+
+Step 4
+Host enters meeting.
+
+6. Meeting Join Workflow
+
+User opens meeting URL.
+
+System checks authentication.
+
+If logged in
+
+User enters meeting.
+
+If not logged in
+
+Prompt:
+
+Login
+Create Account
+
+Once authenticated:
+
+Join meeting.
+
+7. Call Interface Requirements
+
+The meeting interface must include the following components.
+
+Video Grid
+
+Displays all participants.
+
+Layout adapts automatically.
+
+Example:
+
+1 user → full screen
+2 users → split screen
+3-9 users → grid layout
+
+Participant Panel
+
+Displays:
+
+• usernames
+• microphone status
+• camera status
+
+Example:
+
+aurthur@ghost.in
+analyst@ghost.in
+intelteam@ghost.in
+Control Bar
+
+Bottom meeting toolbar includes:
+
+Microphone toggle
+Camera toggle
+Screen share
+Chat
+Leave meeting
+
+8. Screen Sharing
+
+Users may share:
+
+• entire screen
+• browser tab
+• application window
+
+Only one screen share active at a time.
+
+9. Ephemeral Meeting Chat
+
+Meeting chat exists only during active meeting session.
+
+Users can send:
+
+• text messages
+• links
+
+Chat behavior:
+
+During meeting → visible to participants
+Meeting ends → chat deleted permanently
+
+Chat is not stored in database.
+
+Similar ephemeral model used by Snapchat.
+
+10. Call Privacy Policy
+
+The system must never store communication content.
+
+Not stored:
+
+• video streams
+• audio streams
+• screen shares
+• meeting chat
+
+Only metadata logs exist.
+
+11. Admin Logging System
+
+Admin monitoring records system events and metadata only.
+
+12. Call Metadata Logging
+
+Each meeting generates metadata logs.
+
+Stored fields:
+
+Field	Description
+Meeting ID	Unique identifier
+Host User	Meeting creator
+Participants	List of users
+Start Time	Meeting start
+End Time	Meeting end
+Duration	Calculated duration
+Join Events	Who joined
+Leave Events	Who left
+
+Example record:
+
+Meeting ID: 83920293
+Host: aurthur@ghost.in
+
+Participants:
+aurthur@ghost.in
+analyst@ghost.in
+intelteam@ghost.in
+
+Start Time: 2026-03-08 14:10
+End Time: 2026-03-08 15:03
+
+Duration: 53 minutes
+13. Participant Join Logs
+
+Each participant generates join event.
+
+Example:
+
+Meeting ID: 83920293
+User: analyst@ghost.in
+Join Time: 14:12:05
+Leave Time: 15:01:33
+Duration: 49 minutes
+14. Connection Graph Logs
+
+Admin system records interaction networks.
+
+Example:
+
+aurthur@ghost.in
+connected_with
+analyst@ghost.in
+
+Call Duration: 32 minutes
+
+This allows visualization of collaboration networks.
+
+15. System Event Logs
+
+Tracks technical system events.
+
+Events logged:
+
+meeting_created
+participant_joined
+participant_left
+screen_share_started
+screen_share_stopped
+meeting_ended
+
+Example:
+
+Event: participant_joined
+User: analyst@ghost.in
+Meeting ID: 83920293
+Timestamp: 14:12:05
+16. Admin Dashboard
+
+Admin interface provides monitoring tools.
+
+Sections include:
+
+Meeting Overview
+
+Displays:
+
+Active meetings
+Total meetings today
+Average meeting duration
+
+User Interaction Map
+
+Graph showing which users communicate.
+
+Example structure:
+
+aurthur@ghost.in
+   |
+   |---- analyst@ghost.in
+   |
+   |---- intelteam@ghost.in
+System Health Monitor
+
+Tracks:
+
+Active video streams
+TURN server load
+Bandwidth usage
+
+17. Call Capacity
+
+Initial limits (MVP):
+
+Maximum participants per meeting:
+
+25 users
+
+Maximum simultaneous meetings:
+
+100
+
+18. Technical Architecture
+
+The calling system will use:
+
+WebRTC
+
+Core Components
+Signaling Server
+
+Handles:
+
+• session negotiation
+• participant connection
+
+STUN Server
+
+Allows NAT traversal.
+
+TURN Server
+
+Relays traffic if direct connection fails.
+
+Media Engine
+
+Manages video streams between participants.
+
+19. Security Requirements
+
+All signaling encrypted via HTTPS.
+
+WebRTC streams encrypted using:
+
+DTLS-SRTP
+
+Optional future security:
+
+end-to-end encrypted calls.
+
+20. Data Retention Policy
+
+Metadata retention:
+
+Data Type	Retention
+Meeting metadata	180 days
+Join logs	180 days
+System events	30 days
+
+After retention period:
+
+Logs automatically deleted.
+
+21. Performance Requirements
+
+Call setup time:
+
+< 3 seconds
+
+Maximum latency:
+
+< 300 ms
+
+Video resolution:
+
+720p (default)
+
+22. Failure Handling
+
+If participant connection drops:
+
+System attempts reconnection.
+
+If reconnection fails:
+
+User removed from meeting.
+
+23. Scalability Requirements
+
+System must support future scaling to:
+
+10,000 concurrent users
+
+Architecture must allow distributed media servers.

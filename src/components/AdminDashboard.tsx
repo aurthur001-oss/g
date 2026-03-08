@@ -1,0 +1,178 @@
+import React, { useState, useEffect } from 'react';
+import { Shield, Activity, Users, Clock, ChartBar, Settings, X, Search, Terminal, Share2, Map as MapIcon } from 'lucide-react';
+import { LoggingService, type SystemLog } from '../services/LoggingService';
+
+interface AdminDashboardProps {
+    onClose: () => void;
+}
+
+interface InteractionNode {
+    user: string;
+    connected_with: string[];
+}
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
+    const [logs, setLogs] = useState<SystemLog[]>([]);
+    const [interactions, setInteractions] = useState<InteractionNode[]>([]);
+    const [stats, setStats] = useState({
+        activeMeetings: 0,
+        totalMeetingsToday: 0,
+        avgDuration: '0m',
+        bandwidth: '0.0 GB'
+    });
+
+    useEffect(() => {
+        const rawLogs = LoggingService.getLogs();
+        setLogs(rawLogs);
+        setInteractions(LoggingService.getInteractionMap());
+
+        // Simulate some stats based on logs
+        const active = rawLogs.filter((l: SystemLog) => l.event === 'meeting_created').length -
+            rawLogs.filter((l: SystemLog) => l.event === 'meeting_ended').length;
+
+        setStats({
+            activeMeetings: Math.max(0, active),
+            totalMeetingsToday: rawLogs.filter((l: SystemLog) => l.event === 'meeting_created').length,
+            avgDuration: '24m',
+            bandwidth: (Math.random() * 10).toFixed(1) + ' GB'
+        });
+    }, []);
+
+    return (
+        <div className="fixed inset-0 z-[250] bg-[var(--bg)]/90 backdrop-blur-3xl flex items-center justify-center p-6">
+            <div className="w-full max-w-5xl bg-[var(--panel)] border border-[var(--border)] flex flex-col h-[800px] shadow-2xl overflow-hidden relative font-sans">
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--accent)]/0 via-[var(--accent)]/40 to-[var(--accent)]/0" />
+
+                <header className="p-8 border-b border-[var(--border)] flex items-center justify-between bg-white/[0.01]">
+                    <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center rounded-sm">
+                            <Shield className="text-cyan-500" size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-light uppercase tracking-tight text-white italic">Management Console</h3>
+                            <p className="text-[8px] font-black text-zinc-800 uppercase tracking-[0.5em] mt-1 ml-[0.5em]">System Administration & Monitoring</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-green-500/5 border border-green-500/20 rounded-full">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">System Online</span>
+                        </div>
+                        <button onClick={onClose} className="w-12 h-12 flex items-center justify-center text-zinc-700 hover:text-white transition-all"><X size={24} /></button>
+                    </div>
+                </header>
+
+                <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6 bg-white/[0.01] border-b border-white/5">
+                    <StatCard icon={<Activity size={18} />} label="Active Meetings" value={stats.activeMeetings} />
+                    <StatCard icon={<Users size={18} />} label="Total Meetings" value={stats.totalMeetingsToday} />
+                    <StatCard icon={<Clock size={18} />} label="Avg Duration" value={stats.avgDuration} />
+                    <StatCard icon={<ChartBar size={18} />} label="Data Usage" value={stats.bandwidth} />
+                </div>
+
+                <div className="flex-1 overflow-hidden flex flex-col p-8">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <Terminal size={14} className="text-zinc-700" />
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">System Event Logs</h4>
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-800" size={12} />
+                            <input
+                                placeholder="FILTER_LOGS..."
+                                className="bg-black border border-white/5 py-2 pl-10 pr-4 text-[9px] text-zinc-400 focus:outline-none focus:border-cyan-500/20 w-64 uppercase tracking-widest font-mono"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="border border-white/5 bg-black">
+                            <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-widest">System Event Logs</span>
+                                <Terminal size={14} className="text-zinc-700" />
+                            </div>
+                            <div className="max-h-[400px] overflow-y-auto no-scrollbar">
+                                <table className="w-full text-left">
+                                    <thead>
+                                        <tr className="border-b border-white/5 text-[8px] font-black uppercase text-zinc-700">
+                                            <th className="px-6 py-4">Time</th>
+                                            <th className="px-6 py-4">Event</th>
+                                            <th className="px-6 py-4">Metadata</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-[10px] font-mono text-zinc-400">
+                                        {logs.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={3} className="px-6 py-20 text-center opacity-20 italic">No system telemetry recorded</td>
+                                            </tr>
+                                        ) : (
+                                            logs.slice().reverse().map((log: SystemLog, i: number) => (
+                                                <tr key={i} className="border-b border-white/[0.02] hover:bg-white/[0.01] transition-all group">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-zinc-700">{new Date(log.timestamp).toLocaleTimeString()}</td>
+                                                    <td className="px-6 py-4 font-bold text-white tracking-widest">{log.event.toUpperCase().replace('_', ' ')}</td>
+                                                    <td className="px-6 py-4 text-[8px] max-w-xs truncate text-zinc-600 group-hover:text-zinc-400">{JSON.stringify(log.data)}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="border border-white/5 bg-black">
+                            <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-widest">User Interaction Map</span>
+                                <MapIcon size={14} className="text-zinc-700" />
+                            </div>
+                            <div className="p-8 h-full min-h-[400px]">
+                                {interactions.length === 0 ? (
+                                    <div className="h-full flex items-center justify-center text-zinc-800 text-[10px] uppercase font-black">No intersection data detected</div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {interactions.map((node, idx) => (
+                                            <div key={idx} className="flex gap-4 items-start">
+                                                <div className="bg-cyan-500/10 border border-cyan-500/20 px-3 py-1.5 rounded-sm">
+                                                    <span className="text-[10px] font-black text-cyan-500 uppercase">{node.user}</span>
+                                                </div>
+                                                <div className="flex-1 mt-2.5 h-px bg-white/5 relative">
+                                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-cyan-500/40" />
+                                                </div>
+                                                <div className="flex flex-wrap gap-2 w-1/2">
+                                                    {node.connected_with.map((peer: string, pIdx: number) => (
+                                                        <div key={pIdx} className="bg-[var(--btn-bg)] border border-[var(--border)] px-2 py-1 flex items-center gap-2">
+                                                            <Share2 size={8} className="text-[var(--subtext)]" />
+                                                            <span className="text-[8px] font-bold text-[var(--subtext)]">{peer}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <footer className="p-8 border-t border-white/5 bg-white/[0.01] flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-zinc-800 uppercase tracking-widest">
+                            <Settings size={14} className="animate-spin-slow" />
+                            System Configuration: Standardized
+                        </div>
+                    </div>
+                    <div className="text-[10px] font-mono text-zinc-900 uppercase">
+                        Build Hash: {Math.random().toString(36).substring(7).toUpperCase()}
+                    </div>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
+const StatCard = ({ icon, label, value }: { icon: React.ReactNode, label: string, value: string | number }) => (
+    <div className="p-6 border border-[var(--border)] bg-[var(--btn-bg)] hover:bg-[var(--accent)]/5 transition-all group">
+        <div className="mb-4 text-[var(--subtext)] group-hover:text-[var(--accent)] transition-colors">{icon}</div>
+        <div className="text-[8px] font-black uppercase text-[var(--subtext)] tracking-widest mb-1">{label}</div>
+        <div className="text-2xl font-light italic text-[var(--text)] tracking-tighter">{value}</div>
+    </div>
+);

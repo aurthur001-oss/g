@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root {
+  --accent: #00e5ff;
+  --bg: #000000;
+  --panel: #050505;
+  --text: #ffffff;
+  --subtext: rgba(255, 255, 255, 0.5);
+  --border: rgba(255, 255, 255, 0.1);
+  --btn-bg: rgba(255, 255, 255, 0.05);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+body.light-mode {
+  --accent: #00a8cc;
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --text: #1a1a1a;
+  --subtext: rgba(0, 0, 0, 0.5);
+  --border: rgba(0, 0, 0, 0.1);
+  --btn-bg: rgba(0, 0, 0, 0.05);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  margin: 0;
+  transition: all 0.3s ease;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.ghost-surface {
+  background: rgba(5, 5, 5, 0.8);
+  backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.scanline {
+  width: 100%;
+  height: 2px;
+  z-index: 100;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(0, 229, 255, 0.05) 50%,
+      transparent 100%);
+  position: absolute;
+  top: 0;
+  animation: scan-v 6s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scan-v {
+  from {
+    top: 0%;
+  }
+
+  to {
+    top: 100%;
+  }
+}
+
+.noise {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: url('https://grainy-gradients.vercel.app/noise.svg');
+  opacity: 0.04;
+  pointer-events: none;
+}
+
+.chromatic {
+  animation: chromatic-anim 2s infinite linear;
+}
+
+@keyframes chromatic-anim {
+  0% {
+    filter: hue-rotate(0deg) contrast(1.1);
+  }
+
+  50% {
+    filter: hue-rotate(2deg) contrast(1.2);
+  }
+
+  100% {
+    filter: hue-rotate(0deg) contrast(1.1);
+  }
+}
+
+.mesh-grid {
+  background-image: radial-gradient(rgba(0, 229, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.binary-bg {
+  position: absolute;
+  inset: 0;
+  opacity: 0.02;
+  font-family: 'JetBrains Mono';
+  font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
+  overflow: hidden;
+  user-select: none;
+}
