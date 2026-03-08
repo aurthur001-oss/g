@@ -6,7 +6,6 @@ import {
   UserPlus,
   Calendar,
   LogOut,
-  Shield,
   Sun,
   Moon
 } from 'lucide-react';
@@ -15,7 +14,6 @@ import MeetCall from './components/MeetCall';
 import { LoggingService } from './services/LoggingService';
 import { ContactManager } from './components/ContactManager';
 import { Auth } from './components/Auth';
-import { AdminDashboard } from './components/AdminDashboard';
 
 interface User {
   username: string;
@@ -25,14 +23,13 @@ interface User {
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isMeetActive, setIsMeetActive] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState<string | null>(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showContactManager, setShowContactManager] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduledMeetings, setScheduledMeetings] = useState<any[]>([]);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [nodeStats, setNodeStats] = useState({ traffic: '0.0 kbps', latency: '12ms', peers: 1429 });
 
   useEffect(() => {
@@ -49,16 +46,7 @@ const App: React.FC = () => {
       setTheme(savedTheme);
       document.body.className = savedTheme === 'light' ? 'light-mode' : '';
     }
-  }, []);
 
-  const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
-    localStorage.setItem('ghost_theme', newTheme);
-    document.body.className = newTheme === 'light' ? 'light-mode' : '';
-  };
-
-  useEffect(() => {
     const interval = setInterval(() => {
       setNodeStats((prev) => ({
         ...prev,
@@ -70,12 +58,17 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('ghost_theme', newTheme);
+    document.body.className = newTheme === 'light' ? 'light-mode' : '';
+  };
+
   const startMeeting = () => {
     const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     setJoinRoomId(newRoomId);
     setIsMeetActive(true);
-
-    // Log meeting creation
     LoggingService.logEvent('meeting_created', {
       meetingId: newRoomId,
       host: currentUser?.username || 'unknown',
@@ -87,7 +80,6 @@ const App: React.FC = () => {
     setJoinRoomId(id);
     setIsMeetActive(true);
     setShowJoinModal(false);
-
     LoggingService.logEvent('participant_joined', {
       meetingId: id,
       user: currentUser?.username || 'unknown',
@@ -123,7 +115,6 @@ const App: React.FC = () => {
     setScheduledMeetings(updated);
     localStorage.setItem('ghost_scheduled_meetings', JSON.stringify(updated));
     setShowScheduleModal(false);
-
     LoggingService.logEvent('meeting_scheduled', {
       meetingId: newMeeting.id,
       topic,
@@ -155,13 +146,6 @@ const App: React.FC = () => {
             <LogOut size={12} />
             <span className="hidden lg:inline">Disconnect</span>
           </button>
-
-          {currentUser.isAdmin && (
-            <button onClick={() => setShowAdminDashboard(!showAdminDashboard)} className={`px-4 h-8 flex items-center justify-center border border-[var(--border)] rounded-sm text-[8px] font-black uppercase tracking-widest transition-all gap-2 ${showAdminDashboard ? 'bg-[var(--accent)] text-black' : 'text-[var(--text)] bg-[var(--btn-bg)] hover:border-[var(--accent)]/50'}`} title="Admin Panel">
-              <Shield size={12} />
-              <span className="hidden lg:inline">Admin</span>
-            </button>
-          )}
 
           <div className="flex gap-2">
             <button onClick={() => setShowContactManager(true)} className="w-9 h-8 flex items-center justify-center border border-[var(--border)] rounded-sm bg-[var(--btn-bg)] text-[var(--text)] hover:border-[var(--accent)]/40 transition-all">
@@ -225,7 +209,6 @@ const App: React.FC = () => {
           <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} isVpnOn={false} toggleVpn={() => { }} />
         )}
 
-        {showAdminDashboard && currentUser?.isAdmin && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
         {showContactManager && <ContactManager onClose={() => setShowContactManager(false)} onCall={(peerId) => { joinMeeting(peerId); setShowContactManager(false); }} />}
         {showScheduleModal && <ScheduleModal onClose={() => setShowScheduleModal(false)} onSchedule={scheduleMeeting} />}
       </main>
@@ -261,7 +244,6 @@ const Stat = ({ label, val }: { label: string; val: string }) => (
     <span className="text-[10px] md:text-[12px] font-mono text-[var(--text)] uppercase group-hover:text-cyan-500 transition-colors">{val}</span>
   </div>
 );
-
 
 const JoinModal = ({ onClose, onJoin }: { onClose: () => void; onJoin: (id: string) => void }) => {
   const [id, setId] = useState('');

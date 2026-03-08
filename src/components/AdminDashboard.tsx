@@ -17,25 +17,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const [stats, setStats] = useState({
         activeMeetings: 0,
         totalMeetingsToday: 0,
-        avgDuration: '0m',
-        bandwidth: '0.0 GB'
+        avgDuration: '24m',
+        bandwidth: '0.0 GB',
+        totalUsers: 0
     });
+    const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
+
+    const fetchUsers = () => {
+        const users = JSON.parse(localStorage.getItem('ghost_users') || '[]');
+        setRegisteredUsers(users);
+        setStats(prev => ({ ...prev, totalUsers: users.length }));
+    };
+
+    const deleteUser = (username: string) => {
+        if (confirm(`Are you sure you want to decommission node ${username}?`)) {
+            const users = JSON.parse(localStorage.getItem('ghost_users') || '[]');
+            const updated = users.filter((u: any) => u.username !== username);
+            localStorage.setItem('ghost_users', JSON.stringify(updated));
+            fetchUsers();
+        }
+    };
 
     useEffect(() => {
         const rawLogs = LoggingService.getLogs();
         setLogs(rawLogs);
         setInteractions(LoggingService.getInteractionMap());
+        fetchUsers();
 
         // Simulate some stats based on logs
         const active = rawLogs.filter((l: SystemLog) => l.event === 'meeting_created').length -
             rawLogs.filter((l: SystemLog) => l.event === 'meeting_ended').length;
 
-        setStats({
+        setStats(prev => ({
+            ...prev,
             activeMeetings: Math.max(0, active),
             totalMeetingsToday: rawLogs.filter((l: SystemLog) => l.event === 'meeting_created').length,
             avgDuration: '24m',
             bandwidth: (Math.random() * 10).toFixed(1) + ' GB'
-        });
+        }));
     }, []);
 
     return (
@@ -62,11 +81,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     </div>
                 </header>
 
-                <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6 bg-white/[0.01] border-b border-white/5">
+                <div className="p-8 grid grid-cols-1 md:grid-cols-5 gap-6 bg-white/[0.01] border-b border-white/5">
                     <StatCard icon={<Activity size={18} />} label="Active Meetings" value={stats.activeMeetings} />
                     <StatCard icon={<Users size={18} />} label="Total Meetings" value={stats.totalMeetingsToday} />
                     <StatCard icon={<Clock size={18} />} label="Avg Duration" value={stats.avgDuration} />
                     <StatCard icon={<ChartBar size={18} />} label="Data Usage" value={stats.bandwidth} />
+                    <StatCard icon={<Shield size={18} />} label="Initialized Nodes" value={stats.totalUsers} />
                 </div>
 
                 <div className="flex-1 overflow-hidden flex flex-col p-8">
@@ -84,13 +104,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div className="border border-white/5 bg-black">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 overflow-hidden">
+                        <div className="border border-white/5 bg-black flex flex-col">
                             <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
                                 <span className="text-[10px] font-black uppercase tracking-widest">System Event Logs</span>
                                 <Terminal size={14} className="text-zinc-700" />
                             </div>
-                            <div className="max-h-[400px] overflow-y-auto no-scrollbar">
+                            <div className="max-h-[350px] overflow-y-auto no-scrollbar flex-1">
                                 <table className="w-full text-left">
                                     <thead>
                                         <tr className="border-b border-white/5 text-[8px] font-black uppercase text-zinc-700">
@@ -118,12 +138,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             </div>
                         </div>
 
-                        <div className="border border-white/5 bg-black">
+                        <div className="border border-white/5 bg-black flex flex-col">
+                            <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-widest">User Node Management</span>
+                                <Shield size={14} className="text-zinc-700" />
+                            </div>
+                            <div className="max-h-[350px] overflow-y-auto no-scrollbar flex-1">
+                                <table className="w-full text-left">
+                                    <thead>
+                                        <tr className="border-b border-white/5 text-[8px] font-black uppercase text-zinc-700">
+                                            <th className="px-6 py-4">Node_ID</th>
+                                            <th className="px-6 py-4">Display_Name</th>
+                                            <th className="px-6 py-4">Credential_Hash</th>
+                                            <th className="px-6 py-4">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-[10px] font-mono text-zinc-400">
+                                        {registeredUsers.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-20 text-center opacity-20 italic">No active nodes detected</td>
+                                            </tr>
+                                        ) : (
+                                            registeredUsers.map((user, i) => (
+                                                <tr key={i} className="border-b border-white/[0.02] hover:bg-white/[0.01] transition-all group">
+                                                    <td className="px-6 py-4 font-bold text-cyan-500 uppercase">{user.username}</td>
+                                                    <td className="px-6 py-4 text-zinc-400">{user.name}</td>
+                                                    <td className="px-6 py-4 text-[8px] text-zinc-600 font-bold tracking-widest">{user.password}</td>
+                                                    <td className="px-6 py-4">
+                                                        <button
+                                                            onClick={() => deleteUser(user.username)}
+                                                            className="text-red-900 hover:text-red-500 transition-colors uppercase font-black text-[8px]"
+                                                        >
+                                                            Decommission
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="border border-white/5 bg-black flex flex-col">
                             <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
                                 <span className="text-[10px] font-black uppercase tracking-widest">User Interaction Map</span>
                                 <MapIcon size={14} className="text-zinc-700" />
                             </div>
-                            <div className="p-8 h-full min-h-[400px]">
+                            <div className="p-8 max-h-[350px] overflow-y-auto no-scrollbar flex-1">
                                 {interactions.length === 0 ? (
                                     <div className="h-full flex items-center justify-center text-zinc-800 text-[10px] uppercase font-black">No intersection data detected</div>
                                 ) : (
