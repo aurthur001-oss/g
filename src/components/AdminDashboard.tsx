@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Activity, Users, Clock, ChartBar, Settings, X, Search, Terminal, Share2, Map as MapIcon } from 'lucide-react';
+import { Shield, Activity, Users, Clock, ChartBar, Settings, X, Search, Terminal, Share2, Map as MapIcon, Globe, Cloud } from 'lucide-react';
 import { LoggingService, type SystemLog } from '../services/LoggingService';
+import { meshNodes, meshEvents } from '../lib/gun';
+import { supabase, isCloudBackupActive } from '../lib/supabase';
+import { NotificationService } from '../services/NotificationService';
 
 interface AdminDashboardProps {
     onClose: () => void;
@@ -23,18 +26,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     });
     const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
 
-    const fetchUsers = () => {
-        const users = JSON.parse(localStorage.getItem('ghost_users') || '[]');
-        setRegisteredUsers(users);
-        setStats(prev => ({ ...prev, totalUsers: users.length }));
+    const fetchUsers = async () => {
+        // 1. Initial load from LocalStorage (fastest)
+        const localUsers = JSON.parse(localStorage.getItem('ghost_users') || '[]');
+        setRegisteredUsers(localUsers);
+
+        // 2. Load from Supabase (Persistent Backup)
+        if (isCloudBackupActive()) {
+            const { data } = await (supabase as any)
+                .from('nodes')
+                .select('*')
+                .order('timestamp', { ascending: false });
+
+            if (data) {
+                // Merge with local filtering duplicates
+                setRegisteredUsers(prev => {
+                    const combined = [...prev, ...data];
+                    return Array.from(new Map(combined.map(u => [u.username, u])).values());
+                });
+            }
+        }
     };
 
-    const deleteUser = (username: string) => {
+    const deleteUser = async (username: string) => {
         if (confirm(`Are you sure you want to decommission node ${username}?`)) {
+            // 1. Remove from Mesh
+            meshNodes.get(username).put(null);
+
+            // 2. Remove from Supabase
+            if (isCloudBackupActive()) {
+                await (supabase as any).from('nodes').delete().eq('username', username);
+            }
+
+            // 3. Remove from LocalStorage
             const users = JSON.parse(localStorage.getItem('ghost_users') || '[]');
             const updated = users.filter((u: any) => u.username !== username);
             localStorage.setItem('ghost_users', JSON.stringify(updated));
-            fetchUsers();
+
+            setRegisteredUsers(prev => prev.filter(u => u.username !== username));
         }
     };
 
@@ -43,6 +72,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         setLogs(rawLogs);
         setInteractions(LoggingService.getInteractionMap());
         fetchUsers();
+
+        // 3. Listen to Mesh (GunDB) for real-time global updates
+        const meshListener = meshNodes.map().on((data: any, key: string) => {
+            if (data && data.username) {
+                setRegisteredUsers(prev => {
+                    const exists = prev.find(u => u.username === data.username);
+                    if (exists && exists.timestamp >= data.timestamp) return prev;
+
+                    const updated = [...prev.filter(u => u.username !== data.username), data];
+                    return updated.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                });
+            } else if (data === null) {
+                // Handle deletion broadcast
+                setRegisteredUsers(prev => prev.filter(u => u.username !== key));
+            }
+        });
+
+        // 4. Listen to Mesh (GunDB) for real-time system logs
+        const logListener = meshEvents.map().on((data: any) => {
+            if (data && data.event) {
+                setLogs(prev => {
+                    if (prev.find(l => l.timestamp === data.timestamp && l.event === data.event)) return prev;
+                    const updated = [...prev, data];
+                    return updated.sort((a, b) => b.timestamp - a.timestamp);
+                });
+            }
+        });
 
         // Simulate some stats based on logs
         const active = rawLogs.filter((l: SystemLog) => l.event === 'meeting_created').length -
@@ -55,7 +111,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             avgDuration: '24m',
             bandwidth: (Math.random() * 10).toFixed(1) + ' GB'
         }));
+
+        return () => {
+            if (meshListener && typeof meshListener.off === 'function') meshListener.off();
+            if (logListener && typeof logListener.off === 'function') logListener.off();
+        };
     }, []);
+
+    useEffect(() => {
+        setStats(prev => ({ ...prev, totalUsers: registeredUsers.length }));
+    }, [registeredUsers]);
 
     return (
         <div className="fixed inset-0 z-[250] bg-[var(--bg)]/90 backdrop-blur-3xl flex items-center justify-center p-6">
@@ -149,7 +214,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                         <tr className="border-b border-white/5 text-[8px] font-black uppercase text-zinc-700">
                                             <th className="px-6 py-4">Node_ID</th>
                                             <th className="px-6 py-4">Display_Name</th>
-                                            <th className="px-6 py-4">Credential_Hash</th>
+                                            <th className="px-6 py-4">Status</th>
                                             <th className="px-6 py-4">Action</th>
                                         </tr>
                                     </thead>
@@ -161,13 +226,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                         ) : (
                                             registeredUsers.map((user, i) => (
                                                 <tr key={i} className="border-b border-white/[0.02] hover:bg-white/[0.01] transition-all group">
-                                                    <td className="px-6 py-4 font-bold text-cyan-500 uppercase">{user.username}</td>
+                                                    <td className="px-6 py-4 font-bold text-cyan-500 uppercase flex items-center gap-2">
+                                                        {user.username}
+                                                        {user.isAdmin && <Shield size={8} className="text-amber-500" />}
+                                                    </td>
                                                     <td className="px-6 py-4 text-zinc-400">{user.name}</td>
-                                                    <td className="px-6 py-4 text-[8px] text-zinc-600 font-bold tracking-widest">{user.password}</td>
                                                     <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
+                                                            <div title="Mesh Discovery Active"><Globe size={10} className="text-zinc-700" /></div>
+                                                            {isCloudBackupActive() && (
+                                                                <div title="Cloud Backup Synced"><Cloud size={10} className="text-green-900" /></div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
                                                         <button
                                                             onClick={() => deleteUser(user.username)}
-                                                            className="text-red-900 hover:text-red-500 transition-colors uppercase font-black text-[8px]"
+                                                            className="text-red-900 hover:text-red-500 transition-colors uppercase font-black text-[8px] tracking-widest"
                                                         >
                                                             Decommission
                                                         </button>

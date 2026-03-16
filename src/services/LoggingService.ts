@@ -1,3 +1,5 @@
+import { meshEvents } from '../lib/gun';
+
 export interface SystemLog {
     event: string;
     data: any;
@@ -19,6 +21,10 @@ export class LoggingService {
             user: data.user || data.host
         };
 
+        // 1. Broadcast to Mesh (GunDB)
+        meshEvents.get(logEntry.timestamp.toString()).put(logEntry);
+
+        // 2. Local fallback
         const savedLogs = this.getLogs();
         savedLogs.push(logEntry);
 

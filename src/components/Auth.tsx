@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { User, Lock, ArrowRight, UserPlus, LogIn, X, Terminal } from 'lucide-react';
 import { Logo } from './Logo';
+import { meshNodes } from '../lib/gun';
+import { supabase, isCloudBackupActive } from '../lib/supabase';
+import { NotificationService } from '../services/NotificationService';
 
 interface AuthProps {
     onAuthenticate: (user: { username: string; name: string; isAdmin?: boolean }) => void;
@@ -14,49 +17,118 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
     const [regName, setRegName] = useState('');
     const [error, setError] = useState('');
 
-    const handleLogin = (e: React.FormEvent) => {
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setIsSyncing(true);
 
         if (!loginUser || !loginPass) {
             setError('CREDENTIALS_REQUIRED');
+            setIsSyncing(false);
             return;
         }
 
-        const users = JSON.parse(localStorage.getItem('ghost_users') || '[]');
-        const user = users.find((u: any) => u.username === loginUser && u.password === loginPass);
+        try {
+            // First, try to find in Mesh (GunDB)
+            let foundUser: any = null;
 
-        if (user) {
-            const sessionUser = { username: user.username, name: user.name, isAdmin: user.isAdmin };
-            localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
-            onAuthenticate(sessionUser);
-        } else {
-            setError('AUTH_FAILED: INVALID_CREDENTIALS');
+            // Simple mesh lookup (linear for demo, Gun has better ways but this is robust for small node counts)
+            const meshPromise = new Promise((resolve) => {
+                let found = false;
+                meshNodes.map().once((data: any) => {
+                    if (data && data.username === loginUser && data.password === loginPass) {
+                        found = true;
+                        resolve(data);
+                    }
+                });
+                setTimeout(() => { if (!found) resolve(null); }, 2000); // 2s timeout for mesh
+            });
+
+            foundUser = await meshPromise;
+
+            // If not in mesh, check Supabase Backup
+            if (!foundUser && isCloudBackupActive()) {
+                const { data } = await (supabase as any)
+                    .from('nodes')
+                    .select('*')
+                    .eq('username', loginUser)
+                    .eq('password', loginPass)
+                    .single();
+
+                if (data) foundUser = data;
+            }
+
+            // Fallback to localStorage for existing sessions
+            if (!foundUser) {
+                const localUsers = JSON.parse(localStorage.getItem('ghost_users') || '[]');
+                foundUser = localUsers.find((u: any) => u.username === loginUser && u.password === loginPass);
+            }
+
+            if (foundUser) {
+                const sessionUser = {
+                    username: foundUser.username,
+                    name: foundUser.name,
+                    isAdmin: foundUser.isAdmin
+                };
+                localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
+                onAuthenticate(sessionUser);
+            } else {
+                setError('AUTH_FAILED: INVALID_CREDENTIALS');
+            }
+        } catch (err) {
+            setError('SYNC_ERROR: UNABLE_TO_REACH_MESH');
+        } finally {
+            setIsSyncing(false);
         }
     };
 
-    const handleRegister = (e: React.FormEvent) => {
+    const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setIsSyncing(true);
 
         if (!regUser || !regPass || !regName) {
             setError('ALL_FIELDS_REQUIRED');
+            setIsSyncing(false);
             return;
         }
 
-        const users = JSON.parse(localStorage.getItem('ghost_users') || '[]');
-        if (users.find((u: any) => u.username === regUser)) {
-            setError('USERNAME_TAKEN');
-            return;
+        const newUser = {
+            username: regUser,
+            password: regPass,
+            name: regName,
+            isAdmin: false,
+            timestamp: Date.now()
+        };
+
+        try {
+            // 1. Broadcast to Mesh (GunDB)
+            meshNodes.get(regUser).put(newUser);
+
+            // 2. Backup to Cloud (Supabase) if active
+            if (isCloudBackupActive()) {
+                await (supabase as any).from('nodes').upsert(newUser);
+            }
+
+            // 3. Keep local copy for offline access
+            const localUsers = JSON.parse(localStorage.getItem('ghost_users') || '[]');
+            localUsers.push(newUser);
+            localStorage.setItem('ghost_users', JSON.stringify(localUsers));
+
+            // 4. Notify Admin
+            await NotificationService.notifyNewNodeRegistration(regUser, regName);
+
+            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: false };
+            localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
+            onAuthenticate(sessionUser);
+        } catch (err: any) {
+            setError('REGISTRATION_FAILED: INFRASTRUCTURE_OFFLINE');
+            NotificationService.notifyMeshSyncFailure(err.message || 'Unknown registration error');
+        } finally {
+            setIsSyncing(false);
         }
-
-        const newUser = { username: regUser, password: regPass, name: regName, isAdmin: false };
-        users.push(newUser);
-        localStorage.setItem('ghost_users', JSON.stringify(users));
-
-        const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: false };
-        localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
-        onAuthenticate(sessionUser);
     };
 
     return (
@@ -112,9 +184,10 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
 
                             <button
                                 type="submit"
-                                className="w-full py-4 bg-[var(--accent)] text-black text-[10px] font-black uppercase tracking-[0.4em] hover:brightness-110 transition-all flex items-center justify-center gap-4 group mt-8"
+                                disabled={isSyncing}
+                                className="w-full py-4 bg-[var(--accent)] text-black text-[10px] font-black uppercase tracking-[0.4em] hover:brightness-110 transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
                             >
-                                Continue
+                                {isSyncing ? 'Synchronizing...' : 'Continue'}
                                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                         </form>
@@ -172,9 +245,10 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
 
                             <button
                                 type="submit"
-                                className="w-full py-4 border border-[var(--accent)] text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)] hover:text-black transition-all flex items-center justify-center gap-4 group mt-8"
+                                disabled={isSyncing}
+                                className="w-full py-4 border border-[var(--accent)] text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)] hover:text-black transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
                             >
-                                Register
+                                {isSyncing ? 'Broadcasting...' : 'Register'}
                                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                         </form>
