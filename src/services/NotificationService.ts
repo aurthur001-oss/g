@@ -1,5 +1,4 @@
 import emailjs from '@emailjs/browser';
-import type { SystemLog } from './LoggingService';
 
 // Initialize with a placeholder or empty string.
 // The user needs to set these in their .env file.

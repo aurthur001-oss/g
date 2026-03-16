@@ -63,6 +63,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             const updated = users.filter((u: any) => u.username !== username);
             localStorage.setItem('ghost_users', JSON.stringify(updated));
 
+            // 4. Notify Admin
+            await NotificationService.notifyAdmin(
+                'Node Decommissioned',
+                `Node ${username} has been forcefully decommissioned from the global mesh.`
+            );
+
             setRegisteredUsers(prev => prev.filter(u => u.username !== username));
         }
     };
