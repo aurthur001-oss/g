@@ -369,7 +369,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
 
     const copyInvite = () => {
         const baseUrl = `${window.location.origin}${window.location.pathname}`;
-        const url = `${baseUrl}?join=${peerRef.current?.id || roomId}&role=${inviteRole}`;
+        const url = `${baseUrl}?room=${externalRoomId || roomId}`;
         navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);

@@ -47,6 +47,17 @@ const App: React.FC = () => {
       document.body.className = savedTheme === 'light' ? 'light-mode' : '';
     }
 
+    // Check for direct join URL parameter (e.g., ?room=XYZ)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if (roomParam) {
+      setJoinRoomId(roomParam.toUpperCase());
+      setIsMeetActive(true);
+      // Clean up the URL securely
+      // @ts-ignore
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const interval = setInterval(() => {
       setNodeStats((prev) => ({
         ...prev,
