@@ -49,13 +49,24 @@ const App: React.FC = () => {
 
     // Check for direct join URL parameter (e.g., ?room=XYZ)
     const urlParams = new URLSearchParams(window.location.search);
-    const roomParam = urlParams.get('room');
+    let roomParam = urlParams.get('room');
+    
     if (roomParam) {
-      setJoinRoomId(roomParam.toUpperCase());
-      setIsMeetActive(true);
+      sessionStorage.setItem('pending_room', roomParam.toUpperCase());
       // Clean up the URL securely
       // @ts-ignore
       window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      roomParam = sessionStorage.getItem('pending_room');
+    }
+
+    if (roomParam) {
+      setJoinRoomId(roomParam.toUpperCase());
+      setIsMeetActive(true);
+      // Remove it from session storage only after we successfully start joining
+      if (session) {
+         sessionStorage.removeItem('pending_room');
+      }
     }
 
     const interval = setInterval(() => {
