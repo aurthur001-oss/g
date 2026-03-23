@@ -45,6 +45,7 @@ interface MeetCallProps {
     onClose: () => void;
     externalRoomId?: string | null;
     userName?: string;
+    isHost?: boolean;
 }
 
 interface PermissionToggleProps {
@@ -67,7 +68,7 @@ interface VideoTileProps {
     isEnhanced?: boolean;
 }
 
-const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }) => {
+const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, isHost = false }) => {
     const [roomId] = useState(
         () => externalRoomId || Math.random().toString(36).substring(2, 8).toUpperCase()
     );
@@ -77,7 +78,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }
 
     const [myRole] = useState<NodeRole>(() => {
         const params = new URLSearchParams(window.location.search);
-        return params.get('role') === 'shadow' ? 'shadow' : externalRoomId ? 'node' : 'origin';
+        if (params.get('role') === 'shadow') return 'shadow';
+        return isHost ? 'origin' : 'node';
     });
 
     const [reqMic, setReqMic] = useState(true);

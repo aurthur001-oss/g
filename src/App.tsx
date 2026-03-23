@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isMeetActive, setIsMeetActive] = useState(false);
+  const [isHost, setIsHost] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState<string | null>(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showContactManager, setShowContactManager] = useState(false);
@@ -67,6 +68,7 @@ const App: React.FC = () => {
 
     if (roomParam) {
       setJoinRoomId(roomParam.toUpperCase());
+      setIsHost(false);
       setIsMeetActive(true);
       // Remove it from session storage only after we successfully start joining
       if (session) {
@@ -95,6 +97,7 @@ const App: React.FC = () => {
   const startMeeting = () => {
     const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     setJoinRoomId(newRoomId);
+    setIsHost(true);
     setIsMeetActive(true);
     LoggingService.logEvent('meeting_created', {
       meetingId: newRoomId,
@@ -105,6 +108,7 @@ const App: React.FC = () => {
 
   const joinMeeting = (id: string) => {
     setJoinRoomId(id);
+    setIsHost(false);
     setIsMeetActive(true);
     setShowJoinModal(false);
     LoggingService.logEvent('participant_joined', {
@@ -233,7 +237,7 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} userName={currentUser.name} />
+          <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} userName={currentUser.name} isHost={isHost} />
         )}
 
         {showContactManager && <ContactManager onClose={() => setShowContactManager(false)} onCall={(peerId) => { joinMeeting(peerId); setShowContactManager(false); }} />}
