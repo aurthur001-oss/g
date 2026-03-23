@@ -621,8 +621,9 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
         const video = videoRef.current;
         if (!video || !stream) return;
         if (video.srcObject !== stream) video.srcObject = stream;
+
         let audioCtx: AudioContext | null = null;
-        if (!isMuted && !isLocal) {
+        if (!isMuted && !isLocal && stream.getAudioTracks().length > 0) {
             try {
                 audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
                 audioCtxRef.current = audioCtx;
