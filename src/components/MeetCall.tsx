@@ -427,27 +427,34 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }
 
     return (
         <div className={`fixed inset-0 z-[200] bg-black flex flex-col font-sans select-none overflow-hidden animate-in fade-in duration-500 ${ghostMode ? 'chromatic' : ''}`}>
-            <header className="h-16 px-8 flex items-center justify-between border-b border-white/[0.03] bg-black/80 backdrop-blur-2xl shrink-0 z-50">
-                <div className="flex items-center gap-5">
-                    <Logo size={28} className="text-cyan-500 mt-1" animate={hasMediaAccess} />
+            <header className="h-14 md:h-16 px-4 md:px-8 flex items-center justify-between border-b border-white/[0.03] bg-black/80 backdrop-blur-2xl shrink-0 z-50">
+                <div className="flex items-center gap-3 md:gap-5">
+                    <Logo size={24} className="text-cyan-500 mt-1" animate={hasMediaAccess} />
                     <div className="flex flex-col">
-                        <div className="flex items-center gap-3">
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white">MEETING_ID: {roomId}</span>
-                            <div className={`h-1.5 w-1.5 rounded-full ${myRole === 'shadow' ? 'bg-zinc-700' : 'bg-cyan-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
+                        <div className="flex items-center gap-2 md:gap-3">
+                            <span className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em] md:tracking-[0.4em] text-white whitespace-nowrap">ID: {roomId}</span>
+                            <div className={`h-1 w-1 md:h-1.5 md:w-1.5 rounded-full ${myRole === 'shadow' ? 'bg-zinc-700' : 'bg-cyan-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
                         </div>
-                        <span className="text-[7px] font-mono text-zinc-600 uppercase tracking-widest mt-1">{statusMsg} // {myCodename}</span>
+                        <span className="text-[6px] md:text-[7px] font-mono text-zinc-600 uppercase tracking-widest mt-0.5 md:mt-1 truncate max-w-[100px] md:max-w-none">{statusMsg}</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center bg-white/[0.02] border border-white/5 p-1 gap-1 rounded-sm">
+
+                <div className="flex items-center gap-2 md:gap-4">
+                    {/* Role toggle - desktop only */}
+                    <div className="hidden md:flex items-center bg-white/[0.02] border border-white/5 p-1 gap-1 rounded-sm">
                         <button onClick={() => setInviteRole('node')} className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all ${inviteRole === 'node' ? 'bg-cyan-500 text-black' : 'text-zinc-600 hover:text-white'}`}>HOST/PARTICIPANT</button>
                         <button onClick={() => setInviteRole('shadow')} className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all ${inviteRole === 'shadow' ? 'bg-zinc-800 text-white' : 'text-zinc-600 hover:text-white'}`}>OBSERVER</button>
                     </div>
-                    <button onClick={copyInvite} className="px-5 py-2.5 border border-white/5 bg-white/[0.02] text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-3">
+
+                    {/* Invite Link - collapsible on mobile */}
+                    <button onClick={copyInvite} className="p-2.5 md:px-5 md:py-2.5 border border-white/5 bg-white/[0.02] text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-3">
                         {copied ? <Check size={14} className="text-cyan-500" /> : <LinkIcon size={14} />}
-                        {copied ? 'LINK COPIED' : `INVITE LINK`}
+                        <span className="hidden md:inline">{copied ? 'LINK COPIED' : `INVITE LINK`}</span>
                     </button>
-                    <button onClick={endCall} aria-label="Leave Meeting" title="Leave Meeting" className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:text-white transition-all bg-white/[0.02] border border-white/5 hover:border-red-500/50"><X size={24} /></button>
+
+                    <button onClick={endCall} aria-label="Leave Meeting" title="Leave Meeting" className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:text-white transition-all bg-white/[0.02] border border-white/5 hover:border-red-500/50">
+                        <X size={20} md:size={24} />
+                    </button>
                 </div>
             </header>
 
