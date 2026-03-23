@@ -131,6 +131,17 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
         }
     };
 
+    const handleGuestLogin = () => {
+        const guestId = Math.floor(Math.random() * 9000 + 1000);
+        const guestUser = {
+            username: `GUEST-${guestId}`,
+            name: `GUEST PARTICIPANT ${guestId}`,
+            isAdmin: false
+        };
+        sessionStorage.setItem('ghost_guest_session', JSON.stringify(guestUser));
+        onAuthenticate(guestUser);
+    };
+
     return (
         <div className="fixed inset-0 z-[300] bg-[var(--bg)] flex items-center justify-center p-4 md:p-12 overflow-hidden mesh-grid">
             <div className="absolute inset-0 bg-gradient-to-b from-[var(--accent)]/5 via-transparent to-transparent opacity-20" />
@@ -189,6 +200,20 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                             >
                                 {isSyncing ? 'Synchronizing...' : 'Continue'}
                                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                            </button>
+                            
+                            <div className="relative my-8">
+                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--border)]"></div></div>
+                                <div className="relative flex justify-center text-[8px] font-black uppercase tracking-widest"><span className="bg-[var(--panel)] px-4 text-[var(--subtext)]">OR</span></div>
+                            </div>
+                            
+                            <button
+                                type="button"
+                                onClick={handleGuestLogin}
+                                className="w-full py-4 border border-[var(--border)] text-[var(--text)] text-[10px] font-black uppercase tracking-[0.4em] hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition-all flex items-center justify-center gap-4 group"
+                            >
+                                Join as Guest
+                                <UserPlus size={16} className="text-[var(--accent)]" />
                             </button>
                         </form>
                     </div>

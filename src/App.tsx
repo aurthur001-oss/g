@@ -36,6 +36,11 @@ const App: React.FC = () => {
     const session = localStorage.getItem('ghost_session');
     if (session) {
       setCurrentUser(JSON.parse(session));
+    } else {
+      const guestSession = sessionStorage.getItem('ghost_guest_session');
+      if (guestSession) {
+        setCurrentUser(JSON.parse(guestSession));
+      }
     }
     const savedMeetings = localStorage.getItem('ghost_scheduled_meetings');
     if (savedMeetings) {
