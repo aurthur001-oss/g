@@ -44,8 +44,7 @@ interface RemotePeer {
 interface MeetCallProps {
     onClose: () => void;
     externalRoomId?: string | null;
-    isVpnOn: boolean;
-    toggleVpn: () => void;
+    userName?: string;
 }
 
 interface PermissionToggleProps {
@@ -68,15 +67,12 @@ interface VideoTileProps {
     isEnhanced?: boolean;
 }
 
-const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
+const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }) => {
     const [roomId] = useState(
         () => externalRoomId || Math.random().toString(36).substring(2, 8).toUpperCase()
     );
     const [myCodename] = useState(
-        () =>
-            CODENAMES[Math.floor(Math.random() * CODENAMES.length)].toUpperCase() +
-            '-' +
-            Math.floor(Math.random() * 900 + 100)
+        () => userName || CODENAMES[Math.floor(Math.random() * CODENAMES.length)].toUpperCase() + '-' + Math.floor(Math.random() * 900 + 100)
     );
 
     const [myRole] = useState<NodeRole>(() => {
@@ -159,7 +155,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
             localStreamRef.current = stream;
             setHasMediaAccess(true);
 
-            const myId = `GHOST-${roomId}-${myRole}-${myCodename}`;
+            // Predictable Peer ID for the Host (origin)
+            const myId = myRole === 'origin' 
+                ? `GHOST-CONF-${roomId}-HOST` 
+                : `GHOST-CONF-${roomId}-PART-${Math.random().toString(36).substring(2, 6)}`;
+            
             const savedHost = localStorage.getItem('ghost_peer_host') || '0.peerjs.com';
             const peer = new Peer(myId, {
                 host: savedHost,
@@ -180,9 +180,14 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
 
             peer.on('open', () => {
                 setIsConnecting(false);
-                setStatusMsg(`Connected: ${roomId}`);
-                addSystemMessage(`CONNECTED AS ${myCodename}`);
-                if (externalRoomId) connectToPeer(externalRoomId);
+                setStatusMsg(`Meeting Live: ${roomId}`);
+                addSystemMessage(`${myCodename.toUpperCase()} JOINED THE MEETING`);
+                
+                // If I am a participant, connect to the Host
+                if (myRole !== 'origin' && externalRoomId) {
+                    const hostId = `GHOST-CONF-${roomId}-HOST`;
+                    connectToPeer(hostId);
+                }
             });
 
             peer.on('connection', (conn) => setupDataConnection(conn));
@@ -214,19 +219,25 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
         conn.on('open', () => {
             dataConnsRef.current.set(conn.peer, conn);
             conn.send({ type: 'META_SYNC', codename: myCodename, role: myRole });
+            
+            // Host discovery: If I am the host and someone joins, tell everyone else to connect to them
+            if (myRole === 'origin') {
+                dataConnsRef.current.forEach((otherConn, otherPeerId) => {
+                    if (otherPeerId !== conn.peer) {
+                        otherConn.send({ type: 'PEER_DISCOVERY', targetPeerId: conn.peer });
+                    }
+                });
+            }
         });
-        conn.on('data', (data) => {
-            const payload = data as {
-                type: string;
-                message: ChatMessage;
-                codename: string;
-                role: NodeRole;
-            };
-            if (payload.type === 'CHAT') {
-                setMessages((prev) => [...prev, payload.message]);
-            } else if (payload.type === 'META_SYNC') {
-                updatePeerCodename(conn.peer, payload.codename, payload.role);
-                addSystemMessage(`USER ${payload.codename} JOINED`);
+        conn.on('data', (data: any) => {
+            if (data.type === 'CHAT') {
+                setMessages((prev) => [...prev, data.message]);
+            } else if (data.type === 'META_SYNC') {
+                updatePeerCodename(conn.peer, data.codename, data.role);
+                addSystemMessage(`${data.codename.toUpperCase()} ENTERED THE MEETING`);
+            } else if (data.type === 'PEER_DISCOVERY') {
+                // Connect to the new peer discovered via host
+                connectToPeer(data.targetPeerId);
             }
         });
         conn.on('close', () => dataConnsRef.current.delete(conn.peer));
@@ -261,8 +272,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
 
     const handleRemoteStream = (peerId: string, stream: MediaStream) => {
         const parts = peerId.split('-');
-        const role: NodeRole = peerId.includes('-shadow-') ? 'shadow' : peerId.includes('-origin-') ? 'origin' : 'node';
-        const codename = parts[3] || 'UNKNOWN_NODE';
+        const role: NodeRole = peerId.includes('-shadow-') || peerId.includes('-SHADOW-') ? 'shadow' : peerId.includes('-HOST') ? 'origin' : 'node';
+        const codename = 'PARTICIPANT'; // Will be updated by META_SYNC
         setRemotePeers((prev) => {
             if (prev.find((p) => p.peerId === peerId)) return prev;
             return [...prev, { peerId, stream, role, codename }];
@@ -375,6 +386,21 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const addToContacts = (peerId: string, name: string) => {
+        const saved = localStorage.getItem('ghost_contacts');
+        const contacts = saved ? JSON.parse(saved) : [];
+        if (contacts.find((c: any) => c.peerId === peerId)) return;
+        
+        const newContact = {
+            id: Math.random().toString(36).substring(2, 9),
+            codename: name,
+            peerId: peerId
+        };
+        const updated = [...contacts, newContact];
+        localStorage.setItem('ghost_contacts', JSON.stringify(updated));
+        addSystemMessage(`ADDED ${name} TO CONTACTS`);
+    };
+
     const endCall = () => {
         localStreamRef.current?.getTracks().forEach((t) => t.stop());
         screenStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -397,7 +423,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
                     <Logo size={28} className="text-cyan-500 mt-1" animate={hasMediaAccess} />
                     <div className="flex flex-col">
                         <div className="flex items-center gap-3">
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white">ROOM_{roomId}</span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white">MEETING_ID: {roomId}</span>
                             <div className={`h-1.5 w-1.5 rounded-full ${myRole === 'shadow' ? 'bg-zinc-700' : 'bg-cyan-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
                         </div>
                         <span className="text-[7px] font-mono text-zinc-600 uppercase tracking-widest mt-1">{statusMsg} // {myCodename}</span>
@@ -405,14 +431,14 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center bg-white/[0.02] border border-white/5 p-1 gap-1 rounded-sm">
-                        <button onClick={() => setInviteRole('node')} className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all ${inviteRole === 'node' ? 'bg-cyan-500 text-black' : 'text-zinc-600 hover:text-white'}`}>SPEAKER</button>
-                        <button onClick={() => setInviteRole('shadow')} className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all ${inviteRole === 'shadow' ? 'bg-zinc-800 text-white' : 'text-zinc-600 hover:text-white'}`}>VIEWER</button>
+                        <button onClick={() => setInviteRole('node')} className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all ${inviteRole === 'node' ? 'bg-cyan-500 text-black' : 'text-zinc-600 hover:text-white'}`}>HOST/PARTICIPANT</button>
+                        <button onClick={() => setInviteRole('shadow')} className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all ${inviteRole === 'shadow' ? 'bg-zinc-800 text-white' : 'text-zinc-600 hover:text-white'}`}>OBSERVER</button>
                     </div>
                     <button onClick={copyInvite} className="px-5 py-2.5 border border-white/5 bg-white/[0.02] text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-3">
                         {copied ? <Check size={14} className="text-cyan-500" /> : <LinkIcon size={14} />}
-                        {copied ? 'LINK COPIED' : `INVITE`}
+                        {copied ? 'LINK COPIED' : `INVITE LINK`}
                     </button>
-                    <button onClick={endCall} aria-label="Close Meet" className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:text-white transition-all bg-white/[0.02] border border-white/5 hover:border-red-500/50"><X size={24} /></button>
+                    <button onClick={endCall} aria-label="Leave Meeting" title="Leave Meeting" className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:text-white transition-all bg-white/[0.02] border border-white/5 hover:border-red-500/50"><X size={24} /></button>
                 </div>
             </header>
 
@@ -426,7 +452,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-light uppercase tracking-tight text-white italic">Meeting Session</h2>
-                                    <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-1">Room ID: {roomId}</p>
+                                    <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-1">Meeting ID: {roomId}</p>
                                 </div>
                             </div>
                             <h3 className="text-2xl font-light uppercase tracking-tight text-white mb-2 italic">Security Clearance</h3>
@@ -436,20 +462,20 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId }) => {
                                 <PermissionToggle icon={<VideoIcon size={14} />} label="Camera Feed" desc="Proprietary optical broadcast" active={reqCam} onClick={() => setReqCam(!reqCam)} title="Camera" />
                             </div>
                             {error && <div className="mb-8 p-4 bg-red-500/5 border border-red-500/20 text-red-500 text-[8px] font-black uppercase flex items-center gap-3"><AlertCircle size={14} /> {error}</div>}
-                            <div className="grid grid-cols-2 gap-4">
+                             <div className="grid grid-cols-2 gap-4">
                                 <button onClick={authorizeAll} className="py-4 bg-white/[0.02] border border-white/5 text-zinc-500 text-[9px] font-black uppercase tracking-widest hover:text-white transition-all">Authorize All</button>
-                                <button onClick={initNode} disabled={isConnecting} className="py-4 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cyan-400 transition-all shadow-[0_0_30px_rgba(0,229,255,0.2)] disabled:opacity-50">{isConnecting ? 'Initializing...' : 'Join Room'}</button>
+                                <button onClick={initNode} disabled={isConnecting} className="py-4 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cyan-400 transition-all shadow-[0_0_30px_rgba(0,229,255,0.2)] disabled:opacity-50">{isConnecting ? 'Initializing...' : 'Join Meeting'}</button>
                             </div>
                             <p className="mt-8 text-[7px] font-mono text-zinc-900 uppercase tracking-widest">SYSTEM: Peer signaling initiated on {localStorage.getItem('ghost_peer_host') || '0.peerjs.com'}.</p>
                         </div>
                     ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center relative">
                             <div className={`w-full grid gap-6 transition-all duration-700 place-items-center ${getGridCols()}`}>
-                                {myRole !== 'shadow' && (
+                                 {myRole !== 'shadow' && (
                                     <VideoTile stream={localStreamRef.current} isMuted={true} isCameraOff={isCameraOff && !isScreenSharing} isLocal={true} isScreen={isScreenSharing} videoRef={localVideoRef} role={myRole} codename={myCodename} isEnhanced={isEnhanced} />
                                 )}
                                 {remotePeers.filter((p) => p.role !== 'shadow').map((peer) => (
-                                    <VideoTile key={peer.peerId} stream={peer.stream} role={peer.role} codename={peer.codename} isEnhanced={isEnhanced} />
+                                    <VideoTile key={peer.peerId} stream={peer.stream} role={peer.role} codename={peer.codename} isEnhanced={isEnhanced} onAddContact={() => addToContacts(peer.peerId, peer.codename)} />
                                 ))}
                             </div>
                             <div className="mt-12 flex flex-wrap justify-center gap-4">
@@ -541,7 +567,20 @@ const PermissionToggle = ({ icon, label, desc, active, onClick, title }: Permiss
     </div>
 );
 
-const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced }: VideoTileProps) => {
+interface VideoTileProps {
+    stream: MediaStream | null;
+    isMuted?: boolean;
+    isCameraOff?: boolean;
+    isLocal?: boolean;
+    isScreen?: boolean;
+    videoRef?: React.RefObject<HTMLVideoElement | null>;
+    role: NodeRole;
+    codename: string;
+    isEnhanced?: boolean;
+    onAddContact?: () => void;
+}
+
+const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact }: VideoTileProps) => {
     const internalVideoRef = useRef<HTMLVideoElement>(null);
     const videoRef = externalVideoRef || internalVideoRef;
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -588,9 +627,14 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
                 <div className="px-4 py-2 bg-black/80 border border-white/10 flex items-center gap-3 rounded-sm">
                     <div className={`w-2 h-2 rounded-full ${role === 'origin' ? 'bg-cyan-500' : 'bg-green-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">{codename} {role === 'origin' && <span className="ml-2 text-cyan-600 font-mono">[ORIGIN]</span>}</span>
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">{codename} {role === 'origin' && <span className="ml-2 text-cyan-600 font-mono">[HOST]</span>}</span>
+                    {!isLocal && onAddContact && (
+                        <button onClick={onAddContact} title="Add to Contacts" className="ml-2 text-zinc-500 hover:text-cyan-500 transition-colors">
+                            <UserPlus size={12} />
+                        </button>
+                    )}
                 </div>
-                {isScreen && <div className="px-3 py-1 bg-cyan-500 text-black text-[8px] font-black uppercase tracking-widest rounded-sm">SURFACE_UPLINK</div>}
+                {isScreen && <div className="px-3 py-1 bg-cyan-500 text-black text-[8px] font-black uppercase tracking-widest rounded-sm">SCREEN_SHARING</div>}
             </div>
             <div className="absolute inset-0 pointer-events-none opacity-5 mesh-grid" />
         </div>

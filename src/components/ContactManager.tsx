@@ -131,7 +131,7 @@ export const ContactManager: React.FC<ContactManagerProps> = ({ onClose, onCall 
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-[7px] font-black text-zinc-700 uppercase tracking-widest pl-1">Member Peer ID</label>
+                                    <label className="text-[7px] font-black text-zinc-700 uppercase tracking-widest pl-1">Meeting ID / User ID</label>
                                     <input
                                         className="w-full bg-[#050505] border border-white/10 p-3 text-[10px] text-white focus:outline-none focus:border-cyan-500/30"
                                         placeholder="GHOST-XXXX"

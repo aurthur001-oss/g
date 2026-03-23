@@ -155,7 +155,7 @@ const App: React.FC = () => {
           <Logo size={28} animate={isMeetActive} />
           <div className="flex flex-col">
             <span className="text-[10px] font-black tracking-tighter text-[var(--accent)] uppercase leading-none">Video Infrastructure</span>
-            <span className="text-[7px] font-bold text-[var(--subtext)] uppercase tracking-widest mt-0.5">Node: {currentUser.name} // {currentUser.username}</span>
+            <span className="text-[7px] font-bold text-[var(--subtext)] uppercase tracking-widest mt-0.5">User: {currentUser.name}</span>
           </div>
         </div>
 
@@ -192,7 +192,7 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <Video className="relative z-10" size={32} />
                 <div className="text-center relative z-10">
-                  <span className="block text-[10px] font-black uppercase tracking-[0.2em]">Start New</span>
+                  <span className="block text-[10px] font-black uppercase tracking-[0.2em]">New</span>
                   <span className="block text-lg font-light italic mt-1">Meeting</span>
                 </div>
               </button>
@@ -214,8 +214,8 @@ const App: React.FC = () => {
               >
                 <Terminal size={32} className="text-zinc-800 group-hover:text-cyan-500 transition-colors" />
                 <div className="text-center">
-                  <span className="block text-[10px] font-black text-zinc-800 uppercase tracking-[0.2em] group-hover:text-cyan-900">Join Existing</span>
-                  <span className="block text-lg font-light italic mt-1">Room</span>
+                  <span className="block text-[10px] font-black text-zinc-800 uppercase tracking-[0.2em] group-hover:text-cyan-900">Join</span>
+                  <span className="block text-lg font-light italic mt-1">Meeting</span>
                 </div>
               </button>
             </div>
@@ -228,7 +228,7 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} isVpnOn={false} toggleVpn={() => { }} />
+          <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} userName={currentUser.name} />
         )}
 
         {showContactManager && <ContactManager onClose={() => setShowContactManager(false)} onCall={(peerId) => { joinMeeting(peerId); setShowContactManager(false); }} />}
@@ -272,11 +272,11 @@ const JoinModal = ({ onClose, onJoin }: { onClose: () => void; onJoin: (id: stri
   return (
     <div className="fixed inset-0 z-[170] bg-black/98 flex items-center justify-center p-6" onClick={onClose}>
       <div className="w-full max-w-md bg-black border border-white/10 p-12 text-center" onClick={e => e.stopPropagation()}>
-        <h3 className="text-2xl font-light uppercase tracking-tight text-white mb-8 italic">Cluster ID</h3>
+        <h3 className="text-2xl font-light uppercase tracking-tight text-white mb-8 italic">Meeting ID</h3>
         <input autoFocus className="w-full bg-[#050505] border border-white/10 py-5 px-8 text-white text-center text-sm font-mono tracking-[0.6em] uppercase focus:outline-none focus:border-cyan-500/40 mb-10" placeholder="GHOST-XXXX" value={id} onChange={e => setId(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && onJoin(id)} />
         <div className="flex gap-4">
           <button onClick={onClose} className="flex-1 py-4 text-[10px] font-black text-zinc-900 hover:text-white uppercase tracking-widest">Cancel</button>
-          <button onClick={() => onJoin(id)} className="flex-2 px-8 py-4 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-widest">Connect</button>
+          <button onClick={() => onJoin(id)} className="flex-2 px-8 py-4 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-widest">Join</button>
         </div>
       </div>
     </div>
