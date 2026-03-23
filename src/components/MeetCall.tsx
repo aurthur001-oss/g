@@ -294,6 +294,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }
             await stopScreenShare();
             return;
         }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            addSystemMessage('SCREEN SHARE NOT SUPPORTED ON THIS DEVICE/BROWSER');
+            return;
+        }
+
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
@@ -307,8 +313,10 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }
             setIsScreenSharing(true);
             setStatusMsg('Broadcasting Screen');
             addSystemMessage('SCREEN SHARING ACTIVE');
-        } catch (err) {
-            addSystemMessage('ERROR: SCREEN SHARE FAILED');
+        } catch (err: any) {
+            console.error('Screen share error:', err);
+            const errorMsg = err.name === 'NotAllowedError' ? 'PERMISSION DENIED' : 'UNKNOWN FAILURE';
+            addSystemMessage(`ERROR: SCREEN SHARE FAILED - ${errorMsg}`);
         }
     };
 
@@ -411,9 +419,10 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }
     const getGridCols = () => {
         const broadcasters =
             remotePeers.filter((p) => p.role !== 'shadow').length + (myRole !== 'shadow' ? 1 : 0);
+        
         if (broadcasters <= 1) return 'grid-cols-1 max-w-4xl';
         if (broadcasters <= 2) return 'grid-cols-1 md:grid-cols-2 max-w-6xl';
-        return 'grid-cols-2 md:grid-cols-3 max-w-7xl';
+        return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-7xl';
     };
 
     return (
@@ -525,27 +534,40 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName }
             </main>
 
             {hasMediaAccess && (
-                <footer className="h-24 bg-[var(--panel)]/95 backdrop-blur-2xl border-t border-[var(--border)] flex items-center justify-center gap-8 shrink-0 z-50">
-                    <div className="flex items-center gap-4 bg-[var(--btn-bg)] p-2 border border-[var(--border)] rounded-sm">
-                        <ControlBtn icon={isMuted ? <MicOff /> : <Mic />} active={isMuted} onClick={toggleMic} disabled={myRole === 'shadow'} title={isMuted ? "Unmute Microphone" : "Mute Microphone"} />
-                        <ControlBtn icon={isCameraOff ? <VideoOff /> : <VideoIcon />} active={isCameraOff} onClick={toggleCam} disabled={myRole === 'shadow' || isScreenSharing} title={isCameraOff ? "Turn Camera On" : "Turn Camera Off"} />
-                    </div>
-                    <button onClick={endCall} title="End Meeting" className="w-24 h-14 bg-red-600 text-white flex items-center justify-center hover:bg-red-500 transition-all rounded-sm shadow-[0_0_40px_rgba(220,38,38,0.2)] active:scale-95 group"><PhoneOff size={28} className="group-hover:rotate-12 transition-transform" /></button>
-                    <div className="flex items-center gap-4 bg-[var(--btn-bg)] p-2 border border-[var(--border)] rounded-sm">
-                        <ControlBtn icon={isScreenSharing ? <MonitorOff /> : <MonitorUp />} active={isScreenSharing} onClick={toggleScreenShare} disabled={myRole === 'shadow'} title={isScreenSharing ? "Stop Screen Share" : "Start Screen Share"} />
-                        <ControlBtn icon={<MessageSquare />} active={showChat} onClick={() => setShowChat(!showChat)} title="Toggle Chat" />
-                        <ControlBtn icon={<BookOpen />} active={showBriefing} onClick={() => setShowBriefing(true)} title="View Briefing" />
-                        <ControlBtn icon={<Settings />} active={showSettings} onClick={() => setShowSettings(!showSettings)} title="Settings" />
-                        <div className="flex border-l border-[var(--border)] ml-4 pl-4 gap-2">
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[6px] font-black text-[var(--subtext)] uppercase tracking-tighter">Mic Boost</span>
-                                <input type="range" min="100" max="200" value={micBoost} onChange={(e) => setMicBoost(Number(e.target.value))} className="w-16 accent-[var(--accent)]" />
+                <footer className="fixed bottom-0 left-0 right-0 bg-[var(--panel)]/90 backdrop-blur-3xl border-t border-[var(--border)] z-50 transition-all">
+                    <div className="max-w-6xl mx-auto px-4 py-3 md:py-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                        {/* Primary Controls */}
+                        <div className="flex items-center gap-2 md:gap-4 order-2 md:order-1">
+                            <div className="flex items-center gap-1 md:gap-4 bg-[var(--btn-bg)] p-1 md:p-2 border border-[var(--border)] rounded-sm">
+                                <ControlBtn icon={isMuted ? <MicOff /> : <Mic />} active={isMuted} onClick={toggleMic} disabled={myRole === 'shadow'} title="Mute/Unmute" />
+                                <ControlBtn icon={isCameraOff ? <VideoOff /> : <VideoIcon />} active={isCameraOff} onClick={toggleCam} disabled={myRole === 'shadow' || isScreenSharing} title="Camera On/Off" />
                             </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[6px] font-black text-[var(--subtext)] uppercase tracking-tighter">Out Boost</span>
-                                <input type="range" min="100" max="200" value={speakerBoost} onChange={(e) => setSpeakerBoost(Number(e.target.value))} className="w-16 accent-[var(--accent)]" />
+
+                            <div className="flex items-center gap-1 md:gap-4 bg-[var(--btn-bg)] p-1 md:p-2 border border-[var(--border)] rounded-sm">
+                                <ControlBtn icon={isScreenSharing ? <MonitorOff /> : <MonitorUp />} active={isScreenSharing} onClick={toggleScreenShare} disabled={myRole === 'shadow'} title="Screen Share" className="hidden sm:flex" />
+                                <ControlBtn icon={<MessageSquare />} active={showChat} onClick={() => setShowChat(!showChat)} title="Chat" />
                             </div>
-                            <button onClick={() => setIsEnhanced(!isEnhanced)} className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border transition-all ${isEnhanced ? 'bg-[var(--accent)] text-black border-[var(--accent)]' : 'text-[var(--subtext)] border-[var(--border)] bg-[var(--btn-bg)]'}`}>Enhance</button>
+                        </div>
+
+                        {/* End Meeting Button (Centered or Right) */}
+                        <div className="order-1 md:order-2">
+                             <button onClick={endCall} title="End Meeting" className="px-6 md:px-10 py-3 md:py-4 bg-red-600 text-white flex items-center justify-center gap-3 hover:bg-red-500 transition-all rounded-sm shadow-[0_0_40px_rgba(220,38,38,0.2)] active:scale-95 group font-black uppercase text-[9px] md:text-[10px] tracking-widest">
+                                <PhoneOff size={16} className="group-hover:rotate-12 transition-transform" />
+                                <span>Leave Meeting</span>
+                             </button>
+                        </div>
+
+                        {/* Secondary Desktop Controls */}
+                        <div className="hidden lg:flex items-center gap-4 order-3">
+                            <ControlBtn icon={<BookOpen />} active={showBriefing} onClick={() => setShowBriefing(true)} />
+                            <ControlBtn icon={<Settings />} active={showSettings} onClick={() => setShowSettings(!showSettings)} />
+                            <div className="flex border-l border-[var(--border)] ml-2 pl-4 gap-4 items-center">
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[6px] font-black text-[var(--subtext)] uppercase">Audio Out</span>
+                                    <input type="range" min="100" max="200" value={speakerBoost} onChange={(e) => setSpeakerBoost(Number(e.target.value))} className="w-16 accent-[var(--accent)]" />
+                                </div>
+                                <button onClick={() => setIsEnhanced(!isEnhanced)} className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border transition-all ${isEnhanced ? 'bg-[var(--accent)] text-black border-[var(--accent)]' : 'text-[var(--subtext)] border-[var(--border)] bg-[var(--btn-bg)]'}`}>Elite Mode</button>
+                            </div>
                         </div>
                     </div>
                 </footer>
@@ -641,9 +663,9 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
     );
 };
 
-const ControlBtn = ({ icon, active, onClick, disabled, title }: ControlBtnProps & { title?: string }) => (
-    <button onClick={onClick} disabled={disabled} title={title} className={`w-14 h-14 flex items-center justify-center rounded-sm transition-all border ${disabled ? 'opacity-10 cursor-not-allowed grayscale' : active ? 'bg-[var(--accent)] text-black border-[var(--accent)] shadow-[0_0_20px_rgba(0,229,255,0.4)]' : 'text-[var(--text)] border-transparent hover:bg-[var(--btn-bg)] hover:border-[var(--border)]'}`}>
-        {React.cloneElement(icon as React.ReactElement<any>, { size: 24 })}
+const ControlBtn = ({ icon, active, onClick, disabled, title, className }: ControlBtnProps & { title?: string, className?: string }) => (
+    <button onClick={onClick} disabled={disabled} title={title} className={`w-10 h-10 md:w-14 md:h-14 flex items-center justify-center rounded-sm transition-all border ${disabled ? 'opacity-10 cursor-not-allowed grayscale' : active ? 'bg-[var(--accent)] text-black border-[var(--accent)] shadow-[0_0_20px_rgba(0,229,255,0.4)]' : 'text-[var(--text)] border-transparent hover:bg-[var(--btn-bg)] hover:border-[var(--border)]'} ${className}`}>
+        {React.cloneElement(icon as React.ReactElement<any>, { size: window.innerWidth < 768 ? 16 : 24 })}
     </button>
 );
 
