@@ -13,7 +13,10 @@ import { Logo } from './components/Logo';
 import MeetCall from './components/MeetCall';
 import { Auth } from './components/Auth';
 import { AdminDashboard } from './components/AdminDashboard';
-import { Shield } from 'lucide-react';
+import { SocialManager } from './components/SocialManager';
+import { DirectChat } from './components/DirectChat';
+import { Shield, MessageSquare } from 'lucide-react';
+import { LoggingService } from './services/LoggingService';
 
 interface User {
   username: string;
@@ -29,9 +32,8 @@ const App: React.FC = () => {
   const [isHost, setIsHost] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState<string | null>(null);
   const [showJoinModal, setShowJoinModal] = useState(false);
-  const [showContactManager, setShowContactManager] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [showSocialManager, setShowSocialManager] = useState(false);
+  const [activeChatRecipient, setActiveChatRecipient] = useState<{ username: string; name: string } | null>(null);
   const [scheduledMeetings, setScheduledMeetings] = useState<any[]>([]);
   const [nodeStats, setNodeStats] = useState({ traffic: '0.0 kbps', latency: '12ms', peers: 1429 });
 
@@ -194,8 +196,8 @@ const App: React.FC = () => {
                 <Shield size={14} />
               </button>
             )}
-            <button onClick={() => setShowContactManager(true)} className="w-9 h-8 flex items-center justify-center border border-[var(--border)] rounded-sm bg-[var(--btn-bg)] text-[var(--text)] hover:border-[var(--accent)]/40 transition-all">
-              <UserPlus size={14} />
+            <button onClick={() => setShowSocialManager(true)} className="w-9 h-8 flex items-center justify-center border border-[var(--border)] rounded-sm bg-[var(--btn-bg)] text-[var(--text)] hover:border-[var(--accent)]/40 transition-all" title="Social Mesh">
+              <MessageSquare size={14} />
             </button>
           </div>
         </div>
@@ -255,7 +257,23 @@ const App: React.FC = () => {
           <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} userName={currentUser.name} isHost={isHost} />
         )}
 
-        {showContactManager && <ContactManager onClose={() => setShowContactManager(false)} onCall={(peerId) => { joinMeeting(peerId); setShowContactManager(false); }} />}
+        {showSocialManager && (
+          <SocialManager 
+            currentUser={currentUser} 
+            onClose={() => setShowSocialManager(false)} 
+            onStartChat={(recipient) => {
+              setActiveChatRecipient(recipient);
+              setShowSocialManager(false);
+            }} 
+          />
+        )}
+        {activeChatRecipient && (
+          <DirectChat 
+            currentUser={currentUser} 
+            recipient={activeChatRecipient} 
+            onClose={() => setActiveChatRecipient(null)} 
+          />
+        )}
         {showScheduleModal && <ScheduleModal onClose={() => setShowScheduleModal(false)} onSchedule={scheduleMeeting} />}
         {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
       </main>
