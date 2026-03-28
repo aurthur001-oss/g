@@ -19,6 +19,7 @@ interface User {
   username: string;
   name: string;
   isAdmin?: boolean;
+  ip?: string;
 }
 
 const App: React.FC = () => {
@@ -139,6 +140,7 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('ghost_session');
+    sessionStorage.removeItem('ghost_guest_session');
     setCurrentUser(null);
     setIsMeetActive(false);
   };

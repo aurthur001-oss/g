@@ -276,6 +276,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                     <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-2 px-12 leading-relaxed">External Cloud Storage & Node Persistence Layer</p>
                                 </div>
                                 
+                                {!isCloudBackupActive() && (
+                                    <div className="w-full p-4 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black uppercase tracking-widest text-center animate-pulse">
+                                        CRITICAL: SUPABASE_KEYS_MISSING_IN_ENV
+                                    </div>
+                                )}
+                                
                                 <div className="w-full bg-white/[0.02] border border-white/5 p-4 rounded-sm">
                                     <div className="flex items-center justify-between mb-3">
                                         <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">Node Sync Status</span>

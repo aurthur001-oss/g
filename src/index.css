@@ -24,7 +24,9 @@ body.light-mode {
 body {
   background-color: var(--bg);
   color: var(--text);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 100vh;
   margin: 0;
   transition: all 0.3s ease;
 }

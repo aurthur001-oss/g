@@ -1,23 +1,33 @@
-import React, { useState } from 'react';
-import { User, Lock, ArrowRight, UserPlus, LogIn, X, Terminal } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Lock, ArrowRight, UserPlus, LogIn, X, Terminal, Shield, Globe } from 'lucide-react';
 import { Logo } from './Logo';
 import { meshNodes } from '../lib/gun';
 import { supabase, isCloudBackupActive } from '../lib/supabase';
 import { NotificationService } from '../services/NotificationService';
 
 interface AuthProps {
-    onAuthenticate: (user: { username: string; name: string; isAdmin?: boolean }) => void;
+    onAuthenticate: (user: { username: string; name: string; isAdmin?: boolean; ip?: string }) => void;
 }
 
 export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
+    const [view, setView] = useState<'guest' | 'admin'>('guest');
+    const [guestName, setGuestName] = useState('');
     const [loginUser, setLoginUser] = useState('');
     const [loginPass, setLoginPass] = useState('');
     const [regUser, setRegUser] = useState('');
     const [regPass, setRegPass] = useState('');
     const [regName, setRegName] = useState('');
     const [error, setError] = useState('');
-
+    const [userIp, setUserIp] = useState<string>('DETECTING...');
     const [isSyncing, setIsSyncing] = useState(false);
+
+    useEffect(() => {
+        // Simple IP detection
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => setUserIp(data.ip))
+            .catch(() => setUserIp('COULD_NOT_DETECT'));
+    }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -31,10 +41,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
         }
 
         try {
-            // First, try to find in Mesh (GunDB)
             let foundUser: any = null;
-
-            // Simple mesh lookup (linear for demo, Gun has better ways but this is robust for small node counts)
             const meshPromise = new Promise((resolve) => {
                 let found = false;
                 meshNodes.map().once((data: any) => {
@@ -43,12 +50,11 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                         resolve(data);
                     }
                 });
-                setTimeout(() => { if (!found) resolve(null); }, 2000); // 2s timeout for mesh
+                setTimeout(() => { if (!found) resolve(null); }, 2000);
             });
 
             foundUser = await meshPromise;
 
-            // If not in mesh, check Supabase Backup
             if (!foundUser && isCloudBackupActive()) {
                 const { data } = await (supabase as any)
                     .from('nodes')
@@ -60,7 +66,6 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                 if (data) foundUser = data;
             }
 
-            // Fallback to localStorage for existing sessions
             if (!foundUser) {
                 const localUsers = JSON.parse(localStorage.getItem('ghost_users') || '[]');
                 foundUser = localUsers.find((u: any) => u.username === loginUser && u.password === loginPass);
@@ -70,7 +75,8 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                 const sessionUser = {
                     username: foundUser.username,
                     name: foundUser.name,
-                    isAdmin: foundUser.isAdmin
+                    isAdmin: foundUser.isAdmin,
+                    ip: userIp
                 };
                 localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
                 onAuthenticate(sessionUser);
@@ -104,27 +110,23 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             password: regPass,
             name: regName,
             isAdmin: regName.toUpperCase() === 'ADMIN',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            ip: userIp
         };
 
         try {
-            // 1. Broadcast to Mesh (GunDB)
             meshNodes.get(regUser).put(newUser);
-
-            // 2. Backup to Cloud (Supabase) if active
             if (isCloudBackupActive()) {
                 await (supabase as any).from('nodes').upsert(newUser);
             }
 
-            // 3. Keep local copy for offline access
             const localUsers = JSON.parse(localStorage.getItem('ghost_users') || '[]');
             localUsers.push(newUser);
             localStorage.setItem('ghost_users', JSON.stringify(localUsers));
 
-            // 4. Notify Admin
             await NotificationService.notifyNewNodeRegistration(regUser, regName);
 
-            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: newUser.isAdmin };
+            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: newUser.isAdmin, ip: userIp };
             localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
             onAuthenticate(sessionUser);
         } catch (err: any) {
@@ -139,14 +141,17 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
         }
     };
 
-    const handleGuestLogin = () => {
+    const handleGuestLogin = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         setIsSyncing(true);
+        
         setTimeout(() => {
             const guestId = Math.floor(Math.random() * 9000 + 1000);
             const guestUser = {
                 username: `GUEST-${guestId}`,
-                name: `GUEST PARTICIPANT ${guestId}`,
-                isAdmin: false
+                name: guestName.toUpperCase() || `GUEST PARTICIPANT ${guestId}`,
+                isAdmin: false,
+                ip: userIp
             };
             sessionStorage.setItem('ghost_guest_session', JSON.stringify(guestUser));
             onAuthenticate(guestUser);
@@ -155,73 +160,35 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-[300] bg-[var(--bg)] flex items-center justify-center p-4 md:p-12 overflow-hidden mesh-grid">
-            <div className="absolute inset-0 bg-gradient-to-b from-[var(--accent)]/5 via-transparent to-transparent opacity-20" />
+        <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start p-4 md:p-12 relative overflow-x-hidden mesh-grid">
+            <div className="absolute inset-0 bg-gradient-to-b from-[var(--accent)]/5 via-transparent to-transparent opacity-20 pointer-events-none" />
 
-            <div className="w-full max-w-6xl relative animate-in fade-in zoom-in-95 duration-700 flex flex-col gap-8">
-                <div className="flex flex-col items-center mb-4">
-                    <Logo size={48} className="mb-4" animate={true} />
-                    <h2 className="text-2xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic">Infrastructure Access</h2>
+            <div className="w-full max-w-6xl relative animate-in fade-in zoom-in-95 duration-700 flex flex-col gap-8 pt-12 md:pt-24 z-10">
+                <div className="flex flex-col items-center text-center">
+                    <Logo size={64} className="mb-6" animate={true} />
+                    <h1 className="text-3xl md:text-5xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">GHOST INFRASTRUCTURE</h1>
+                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.5em] mt-2 px-12 opacity-80">Mission Critical P2P Video Communication</p>
                     
                     {sessionStorage.getItem('pending_host') && (
-                        <div className="mt-4 px-6 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse">
-                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Joining {sessionStorage.getItem('pending_host')}'s Meeting</span>
+                        <div className="mt-6 px-6 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse">
+                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest italic">JOINING_{sessionStorage.getItem('pending_host')}_ENCRYPTED_SIGNAL</span>
                         </div>
                     )}
-
-                    <div className="flex items-center gap-2 mt-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                        <span className="text-[9px] font-black text-[var(--subtext)] uppercase tracking-[0.4em]">Node Connection Stable</span>
-                    </div>
                 </div>
 
-                <div className="flex flex-col gap-4">
-                    <button
-                        type="button"
-                        onClick={handleGuestLogin}
-                        className="w-full py-6 bg-cyan-500 text-black text-[12px] font-black uppercase tracking-[0.5em] hover:bg-cyan-400 transition-all flex items-center justify-center gap-6 group shadow-[0_0_50px_rgba(0,229,255,0.15)] pulse-border"
-                    >
-                        {isSyncing ? 'INITIALIZING_GUEST_LINK...' : 'Join as Guest (Instant Access)'}
-                        <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
-                    </button>
-                    <div className="text-center">
-                        <span className="text-[8px] font-black text-zinc-800 uppercase tracking-widest italic">Encrypted P2P Session • No Account Required</span>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border)] border border-[var(--border)] shadow-2xl overflow-hidden mt-4">
-                    {/* Login Panel */}
-                    <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col">
-                        <div className="flex items-center gap-3 mb-8">
-                            <LogIn size={20} className="text-[var(--accent)]" />
-                            <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Sign In</h3>
-                        </div>
-
-                        <form onSubmit={handleLogin} className="space-y-6 flex-1">
+                {view === 'guest' ? (
+                    <div className="w-full max-w-md mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                        <form onSubmit={handleGuestLogin} className="space-y-6">
                             <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Username</label>
-                                <div className="relative">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
+                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.3em] pl-1">Your Call Sign (Optional Name)</label>
+                                <div className="relative group">
+                                    <Terminal className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)] group-focus-within:text-[var(--accent)] transition-colors" size={16} />
                                     <input
                                         type="text"
-                                        className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
-                                        placeholder="Username"
-                                        value={loginUser}
-                                        onChange={e => setLoginUser(e.target.value.toUpperCase())}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Password</label>
-                                <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
-                                    <input
-                                        type="password"
-                                        className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
-                                        placeholder="••••••••"
-                                        value={loginPass}
-                                        onChange={e => setLoginPass(e.target.value)}
+                                        className="w-full bg-[var(--panel)] border border-[var(--border)] py-5 pl-12 pr-4 text-[var(--text)] text-[12px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 focus:ring-1 focus:ring-[var(--accent)]/20 transition-all placeholder:text-zinc-800"
+                                        placeholder="ENTER_NAME_OR_PROCEED_AS_ANON"
+                                        value={guestName}
+                                        onChange={e => setGuestName(e.target.value.toUpperCase())}
                                     />
                                 </div>
                             </div>
@@ -229,75 +196,156 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                             <button
                                 type="submit"
                                 disabled={isSyncing}
-                                className="w-full py-4 bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)]/20 transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
+                                className="w-full py-6 bg-[var(--accent)] text-black text-[12px] font-black uppercase tracking-[0.5em] hover:bg-white hover:scale-[1.01] transition-all flex items-center justify-center gap-6 group shadow-[0_0_50px_rgba(0,229,255,0.15)] pulse-border disabled:opacity-50"
                             >
-                                {isSyncing ? 'Synchronizing...' : 'Log In to Node'}
-                                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                {isSyncing ? 'STABILIZING_SIGNAL...' : 'INITIATE_INSTANCE'}
+                                <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
                             </button>
                         </form>
-                    </div>
 
-                    {/* Register Panel */}
-                    <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col border-t md:border-t-0 md:border-l border-[var(--border)]">
-                        <div className="flex items-center gap-3 mb-8">
-                            <UserPlus size={20} className="text-[var(--accent)]" />
-                            <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Create Account</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-sm text-center">
+                                <span className="block text-[8px] font-black text-zinc-800 uppercase tracking-widest mb-1">Detection ID (IP)</span>
+                                <span className="block text-[10px] font-mono text-[var(--subtext)]">{userIp}</span>
+                            </div>
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-sm text-center">
+                                <span className="block text-[8px] font-black text-zinc-800 uppercase tracking-widest mb-1">Encrypted Tunnel</span>
+                                <span className="block text-[10px] font-mono text-green-500">ACTIVE</span>
+                            </div>
                         </div>
 
-                        <form onSubmit={handleRegister} className="space-y-6 flex-1">
-                            <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">New Username</label>
-                                <div className="relative">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
-                                    <input
-                                        type="text"
-                                        className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
-                                        placeholder="Username"
-                                        value={regUser}
-                                        onChange={e => setRegUser(e.target.value.toUpperCase())}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Display Name</label>
-                                <div className="relative">
-                                    <Terminal className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
-                                    <input
-                                        type="text"
-                                        className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
-                                        placeholder="Full Name"
-                                        value={regName}
-                                        onChange={e => setRegName(e.target.value.toUpperCase())}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Password</label>
-                                <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
-                                    <input
-                                        type="password"
-                                        className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
-                                        placeholder="••••••••"
-                                        value={regPass}
-                                        onChange={e => setRegPass(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={isSyncing}
-                                className="w-full py-4 border border-[var(--accent)] text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)] hover:text-black transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
+                        <div className="text-center pt-8">
+                            <button 
+                                onClick={() => setView('admin')}
+                                className="text-[9px] font-black text-zinc-900 uppercase tracking-[0.3em] hover:text-[var(--accent)] transition-all flex items-center justify-center gap-2 mx-auto decoration-transparent hover:decoration-[var(--accent)] underline underline-offset-8"
                             >
-                                {isSyncing ? 'Broadcasting...' : 'Register'}
-                                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                <Shield size={12} />
+                                NODE_ADMINISTRATOR_LOGIN
                             </button>
-                        </form>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="animate-in slide-in-from-bottom-4 duration-500">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border)] border border-[var(--border)] shadow-2xl overflow-hidden">
+                            {/* Login Panel */}
+                            <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col">
+                                <div className="flex items-center gap-3 mb-8">
+                                    <LogIn size={20} className="text-[var(--accent)]" />
+                                    <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Direct Node Login</h3>
+                                </div>
+
+                                <form onSubmit={handleLogin} className="space-y-6 flex-1">
+                                    <div className="space-y-2">
+                                        <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Username</label>
+                                        <div className="relative">
+                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
+                                            <input
+                                                type="text"
+                                                className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
+                                                placeholder="Username"
+                                                value={loginUser}
+                                                onChange={e => setLoginUser(e.target.value.toUpperCase())}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Password</label>
+                                        <div className="relative">
+                                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
+                                            <input
+                                                type="password"
+                                                className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
+                                                placeholder="••••••••"
+                                                value={loginPass}
+                                                onChange={e => setLoginPass(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isSyncing}
+                                        className="w-full py-4 bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)]/20 transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
+                                    >
+                                        {isSyncing ? 'Synchronizing...' : 'Log In to Node'}
+                                        <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                    </button>
+                                </form>
+                            </div>
+
+                            {/* Register Panel */}
+                            <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col border-t md:border-t-0 md:border-l border-[var(--border)]">
+                                <div className="flex items-center gap-3 mb-8">
+                                    <UserPlus size={20} className="text-[var(--accent)]" />
+                                    <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Request Clearance</h3>
+                                </div>
+
+                                <form onSubmit={handleRegister} className="space-y-6 flex-1">
+                                    <div className="space-y-2">
+                                        <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">New Username</label>
+                                        <div className="relative">
+                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
+                                            <input
+                                                type="text"
+                                                className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
+                                                placeholder="Username"
+                                                value={regUser}
+                                                onChange={e => setRegUser(e.target.value.toUpperCase())}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Display Name</label>
+                                        <div className="relative">
+                                            <Terminal className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
+                                            <input
+                                                type="text"
+                                                className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
+                                                placeholder="Full Name"
+                                                value={regName}
+                                                onChange={e => setRegName(e.target.value.toUpperCase())}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-widest pl-1">Password</label>
+                                        <div className="relative">
+                                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)]" size={16} />
+                                            <input
+                                                type="password"
+                                                className="w-full bg-[var(--bg)] border border-[var(--border)] py-4 pl-12 pr-4 text-[var(--text)] text-[10px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 transition-all placeholder:text-zinc-800"
+                                                placeholder="••••••••"
+                                                value={regPass}
+                                                onChange={e => setRegPass(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isSyncing}
+                                        className="w-full py-4 border border-[var(--accent)] text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)] hover:text-black transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
+                                    >
+                                        {isSyncing ? 'Broadcasting...' : 'Register'}
+                                        <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        <div className="text-center mt-8">
+                            <button 
+                                onClick={() => setView('guest')}
+                                className="text-[10px] font-black text-white hover:text-cyan-500 uppercase tracking-widest flex items-center gap-2 mx-auto"
+                            >
+                                <ArrowRight size={14} className="rotate-180" />
+                                RETURN_TO_GUEST_ACCESS
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {error && (
                     <div className="p-4 bg-red-500/5 border border-red-500/20 text-red-500 text-[9px] font-black uppercase flex items-center gap-3 animate-shake justify-center">
@@ -305,8 +353,12 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                     </div>
                 )}
 
-                <div className="flex justify-end items-center px-2">
-                    <p className="text-[8px] font-mono text-zinc-900 uppercase tracking-[0.2em] hidden md:block text-right">© 2026 GHOST ANALYTICS // MISSION CRITICAL SYSTEMS</p>
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 px-2 mt-8 opacity-40">
+                    <div className="flex items-center gap-3 order-2 md:order-1">
+                        <Globe size={12} className="text-zinc-900" />
+                        <span className="text-[8px] font-mono text-zinc-900 uppercase tracking-widest">Signal Detected: {userIp}</span>
+                    </div>
+                    <p className="text-[8px] font-mono text-zinc-900 uppercase tracking-[0.2em] order-1 md:order-2">© 2026 GHOST ANALYTICS // MISSION CRITICAL SYSTEMS</p>
                 </div>
             </div>
 
@@ -318,9 +370,9 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                     75% { transform: translateX(4px); }
                 }
                 .animate-shake { animation: shake 0.2s ease-in-out infinite; animation-iteration-count: 2; }
+                .noise { position: fixed; inset: 0; z-index: 9999; opacity: 0.04; pointer-events: none; background: url('https://grainy-gradients.vercel.app/noise.svg'); }
+                .scanline { position: fixed; inset: 0; z-index: 9998; pointer-events: none; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 2px, 3px 100%; }
             `}} />
-            <div className="noise" />
-            <div className="scanline" />
         </div>
     );
 };
