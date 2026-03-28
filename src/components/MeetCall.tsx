@@ -26,6 +26,7 @@ import {
 import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
 import type { NodeRole, ChatMessage } from '../types';
+import { supabase, isCloudBackupActive } from '../lib/supabase';
 
 const CODENAMES = [
     'Specter', 'Wraith', 'Phantom', 'Banshee', 'Shade', 'Poltergeist',
@@ -128,6 +129,68 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         setReqCam(true);
     };
 
+
+
+
+
+    // Mobile Fix: Global user interaction listener to resume AudioContexts
+    useEffect(() => {
+        const handleInteraction = () => {
+            const allAudios = document.querySelectorAll('video');
+            allAudios.forEach(v => {
+                if (v.paused && v.srcObject) v.play().catch(() => {});
+            });
+            // We can't easily access the component's audioCtx from here, 
+            // but the VideoTile click handler will take care of it too.
+        };
+        window.addEventListener('click', handleInteraction);
+        window.addEventListener('touchstart', handleInteraction);
+        return () => {
+            window.removeEventListener('click', handleInteraction);
+            window.removeEventListener('touchstart', handleInteraction);
+        };
+    }, []);
+
+    useEffect(() => {
+        const handleUnload = () => {
+            localStreamRef.current?.getTracks().forEach((t) => t.stop());
+            screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+            peerRef.current?.destroy();
+        };
+        window.addEventListener('beforeunload', handleUnload);
+        return () => window.removeEventListener('beforeunload', handleUnload);
+    }, []);
+
+    useEffect(() => {
+        initNode();
+        
+        let signalChannel: any = null;
+        if (isCloudBackupActive()) {
+            signalChannel = (supabase as any)
+                .channel(`signaling-${roomId}`)
+                .on('postgres_changes', { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'meeting_signaling', 
+                    filter: `room_id=eq.${roomId}` 
+                }, (payload: any) => {
+                    const newPeerId = payload.new.peer_id;
+                    if (newPeerId !== peerRef.current?.id) {
+                        console.log(`[SIGNALING] Discovery via Cloud: ${newPeerId}`);
+                        connectToPeer(newPeerId);
+                    }
+                })
+                .subscribe();
+        }
+
+        return () => {
+            localStreamRef.current?.getTracks().forEach((t) => t.stop());
+            screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+            peerRef.current?.destroy();
+            if (signalChannel) (supabase as any).removeChannel(signalChannel);
+        };
+    }, [reqMic, reqCam]);
+
     const initNode = async () => {
         try {
             setError(null);
@@ -157,14 +220,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             localStreamRef.current = stream;
             setHasMediaAccess(true);
 
-            // Predictable Peer ID for the Host (origin)
             const myId = myRole === 'origin' 
                 ? `GHOST-CONF-${roomId}-HOST` 
                 : `GHOST-CONF-${roomId}-PART-${Math.random().toString(36).substring(2, 6)}`;
             
-            const savedHost = localStorage.getItem('ghost_peer_host') || '0.peerjs.com';
             const peer = new Peer(myId, {
-                host: savedHost,
+                host: '0.peerjs.com',
                 port: 443,
                 secure: true,
                 debug: 1,
@@ -174,7 +235,13 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                         { urls: 'stun:stun1.l.google.com:19302' },
                         { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' }
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        // TURN Server for Mobile/NAT Traversal (REQUIRED for cross-network calls)
+                        // {
+                        //     urls: 'turn:your-turn-server.com:3478',
+                        //     username: 'your-username',
+                        //     credential: 'your-password'
+                        // }
                     ]
                 }
             });
@@ -185,7 +252,14 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 setStatusMsg(`Meeting Live: ${roomId}`);
                 addSystemMessage(`${myCodename.toUpperCase()} JOINED THE MEETING`);
                 
-                // If I am a participant, connect to the Host
+                // Reliable Signaling Fallback: Register presence in Supabase
+                if (isCloudBackupActive()) {
+                    (supabase as any).from('meeting_signaling').insert({
+                        room_id: roomId,
+                        peer_id: myId
+                    });
+                }
+                
                 if (myRole !== 'origin' && externalRoomId) {
                     const hostId = `GHOST-CONF-${roomId}-HOST`;
                     connectToPeer(hostId);
@@ -200,8 +274,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                         ? screenStreamRef.current
                         : localStreamRef.current!;
                 call.answer(streamToSend);
-                call.on('stream', (remoteStream) => handleRemoteStream(call.peer, remoteStream));
-                call.on('close', () => removePeer(call.peer));
+                call.on('stream', (remoteStream) => {
+                    handleRemoteStream(call.peer, remoteStream);
+                });
+                call.on('close', () => {
+                    removePeer(call.peer);
+                });
                 callsRef.current.set(call.peer, call);
             });
 
@@ -238,8 +316,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 updatePeerCodename(conn.peer, data.codename, data.role);
                 addSystemMessage(`${data.codename.toUpperCase()} ENTERED THE MEETING`);
             } else if (data.type === 'PEER_DISCOVERY') {
-                // Connect to the new peer discovered via host
-                connectToPeer(data.targetPeerId);
+                // Staggered discovery to prevent signaling storm
+                const delay = Math.floor(Math.random() * 1500);
+                setTimeout(() => {
+                    connectToPeer(data.targetPeerId);
+                }, delay);
             }
         });
         conn.on('close', () => dataConnsRef.current.delete(conn.peer));
@@ -260,25 +341,65 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         setMessages((prev) => [...prev, msg]);
     };
 
-    const connectToPeer = (targetId: string) => {
+    const connectToPeer = (targetId: string, retryCount = 0) => {
         if (!peerRef.current || !localStreamRef.current) return;
-        const conn = peerRef.current.connect(targetId);
-        setupDataConnection(conn);
-        const streamToSend =
-            isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-        const call = peerRef.current.call(targetId, streamToSend!);
-        call.on('stream', (remoteStream) => handleRemoteStream(targetId, remoteStream));
-        call.on('close', () => removePeer(targetId));
-        callsRef.current.set(targetId, call);
+        if (callsRef.current.has(targetId) || targetId === peerRef.current.id) return;
+
+        // Collision Prevention: Only the peer with the lexicographically higher ID initiates the call
+        if (peerRef.current.id < targetId) {
+            console.log(`[SIGNALING] Passive discovery for ${targetId} (waiting for incoming call)`);
+            return;
+        }
+
+        // Staggered connection for 20+ users
+        const delay = retryCount === 0 ? Math.floor(Math.random() * 2000) : 0;
+        
+        setTimeout(() => {
+            try {
+                const conn = peerRef.current!.connect(targetId, { reliable: true });
+                setupDataConnection(conn);
+                const streamToSend =
+                    isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                const call = peerRef.current!.call(targetId, streamToSend!);
+                
+                if (call) {
+                    call.on('stream', (remoteStream) => {
+                        handleRemoteStream(targetId, remoteStream);
+                    });
+                    
+                    call.on('error', (err) => {
+                        console.error(`Peer ${targetId} handshake failed:`, err);
+                        if (retryCount < 2) setTimeout(() => connectToPeer(targetId, retryCount + 1), 3000);
+                    });
+                    call.on('close', () => removePeer(targetId));
+                    callsRef.current.set(targetId, call);
+                }
+            } catch (err) {
+                console.error(`Target ${targetId} unreachable:`, err);
+            }
+        }, delay);
     };
 
     const handleRemoteStream = (peerId: string, stream: MediaStream) => {
         const parts = peerId.split('-');
         const role: NodeRole = peerId.includes('-shadow-') || peerId.includes('-SHADOW-') ? 'shadow' : peerId.includes('-HOST') ? 'origin' : 'node';
-        const codename = 'PARTICIPANT'; // Will be updated by META_SYNC
+        
+        // Bandwidth protection for 20+ participants
+        // If more than 8 users, we keep new video off to save CPU/Network
+        const autoOff = remotePeers.length > 8;
+        
         setRemotePeers((prev) => {
-            if (prev.find((p) => p.peerId === peerId)) return prev;
-            return [...prev, { peerId, stream, role, codename }];
+            if (prev.find((p) => p.peerId === peerId)) {
+                return prev.map((p) => p.peerId === peerId ? { ...p, stream } : p);
+            }
+            return [...prev, { 
+                peerId, 
+                stream, 
+                role, 
+                codename: `U-${peerId.slice(-4)}`,
+                isCameraOff: autoOff,
+                isMuted: false
+            }];
         });
     };
 
@@ -390,7 +511,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
     const copyInvite = () => {
         const baseUrl = `${window.location.origin}${window.location.pathname}`;
-        const url = `${baseUrl}?room=${externalRoomId || roomId}`;
+        const url = `${baseUrl}?room=${externalRoomId || roomId}&host=${userName}`;
         navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -620,7 +741,17 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
     useEffect(() => {
         const video = videoRef.current;
         if (!video || !stream) return;
-        if (video.srcObject !== stream) video.srcObject = stream;
+        
+        const attemptPlay = async () => {
+            try {
+                if (video.srcObject !== stream) video.srcObject = stream;
+                await video.play();
+            } catch (e) {
+                console.warn('Mobile Autoplay Blocked - Waiting for interaction:', e);
+            }
+        };
+        
+        attemptPlay();
 
         let audioCtx: AudioContext | null = null;
         if (!isMuted && !isLocal && stream.getAudioTracks().length > 0) {
@@ -641,6 +772,14 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
         return () => { if (audioCtx) audioCtx.close().catch(() => { }); };
     }, [stream, isMuted, isLocal]);
 
+    const handleManualPlay = () => {
+        const video = videoRef.current;
+        if (video) video.play().catch(() => {});
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+            audioCtxRef.current.resume();
+        }
+    };
+
     useEffect(() => {
         if (gainNodeRef.current && audioCtxRef.current) {
             gainNodeRef.current.gain.setTargetAtTime((window as any).GHOST_SPEAKER_BOOST || 1.0, audioCtxRef.current.currentTime, 0.1);
@@ -648,8 +787,22 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
     }, [stream]);
 
     return (
-        <div className="relative w-full aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center">
-            <video ref={videoRef} autoPlay playsInline muted={isMuted} style={{ filter: isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none' }} className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-80 scale-100'}`} />
+        <div 
+            onClick={handleManualPlay}
+            className="relative w-full aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
+        >
+            <video ref={videoRef} autoPlay playsInline muted={isLocal || isMuted} style={{ filter: isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none' }} className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} />
+            
+            {/* Mobile Recovery Prompt */}
+            {!isLocal && !isCameraOff && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 pointer-events-none">
+                     <div className="bg-cyan-500/20 backdrop-blur-sm border border-cyan-500/40 p-2 rounded-full">
+                        <MonitorUp size={16} className="text-cyan-400" />
+                     </div>
+                     <span className="text-[7px] font-black text-cyan-400 uppercase tracking-widest mt-2">Tap to Sync Media</span>
+                </div>
+            )}
+
             {isCameraOff && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-black/60 backdrop-blur-md">
                     <div className="w-20 h-20 rounded-full border border-white/5 flex items-center justify-center bg-black/40"><EyeOff size={32} className="text-zinc-900" /></div>
@@ -661,7 +814,7 @@ const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
                     <div className={`w-2 h-2 rounded-full ${role === 'origin' ? 'bg-cyan-500' : 'bg-green-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
                     <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">{codename} {role === 'origin' && <span className="ml-2 text-cyan-600 font-mono">[HOST]</span>}</span>
                     {!isLocal && onAddContact && (
-                        <button onClick={onAddContact} title="Add to Contacts" className="ml-2 text-zinc-500 hover:text-cyan-500 transition-colors">
+                        <button onClick={(e) => { e.stopPropagation(); onAddContact(); }} title="Add to Contacts" className="ml-2 text-zinc-500 hover:text-cyan-500 transition-colors pointer-events-auto">
                             <UserPlus size={12} />
                         </button>
                     )}

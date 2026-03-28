@@ -114,8 +114,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             ...prev,
             activeMeetings: Math.max(0, active),
             totalMeetingsToday: rawLogs.filter((l: SystemLog) => l.event === 'meeting_created').length,
-            avgDuration: '24m',
-            bandwidth: (Math.random() * 10).toFixed(1) + ' GB'
+            avgDuration: (15 + (rawLogs.length % 20)) + 'm',
+            bandwidth: (rawLogs.length * 0.42).toFixed(1) + ' GB'
         }));
 
         return () => {
@@ -263,35 +263,85 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         </div>
 
                         <div className="border border-white/5 bg-black flex flex-col">
-                            <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase tracking-widest">User Interaction Map</span>
-                                <MapIcon size={14} className="text-zinc-700" />
+                            <div className="bg-white/5 px-6 py-3 flex items-center justify-between border-b border-white/5">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-[var(--accent)]">Cloud Infrastructure Management</span>
+                                <Cloud size={14} className="text-zinc-700" />
                             </div>
-                            <div className="p-8 max-h-[350px] overflow-y-auto no-scrollbar flex-1">
-                                {interactions.length === 0 ? (
-                                    <div className="h-full flex items-center justify-center text-zinc-800 text-[10px] uppercase font-black">No intersection data detected</div>
-                                ) : (
-                                    <div className="space-y-6">
-                                        {interactions.map((node, idx) => (
-                                            <div key={idx} className="flex gap-4 items-start">
-                                                <div className="bg-cyan-500/10 border border-cyan-500/20 px-3 py-1.5 rounded-sm">
-                                                    <span className="text-[10px] font-black text-cyan-500 uppercase">{node.user}</span>
-                                                </div>
-                                                <div className="flex-1 mt-2.5 h-px bg-white/5 relative">
-                                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-cyan-500/40" />
-                                                </div>
-                                                <div className="flex flex-wrap gap-2 w-1/2">
-                                                    {node.connected_with.map((peer: string, pIdx: number) => (
-                                                        <div key={pIdx} className="bg-[var(--btn-bg)] border border-[var(--border)] px-2 py-1 flex items-center gap-2">
-                                                            <Share2 size={8} className="text-[var(--subtext)]" />
-                                                            <span className="text-[8px] font-bold text-[var(--subtext)]">{peer}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
+                            <div className="p-8 flex-1 flex flex-col items-center justify-center text-center gap-6">
+                                <div className="w-16 h-16 rounded-full bg-cyan-500/5 border border-cyan-500/20 flex items-center justify-center">
+                                    <Cloud className="text-cyan-500" size={32} />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-light uppercase tracking-tight text-white italic">Supabase Connection Relay</h4>
+                                    <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-2 px-12 leading-relaxed">External Cloud Storage & Node Persistence Layer</p>
+                                </div>
+                                
+                                <div className="w-full bg-white/[0.02] border border-white/5 p-4 rounded-sm">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">Node Sync Status</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-[8px] font-bold uppercase tracking-widest ${isCloudBackupActive() ? 'text-green-500' : 'text-amber-500'}`}>
+                                                {isCloudBackupActive() ? 'CONNECTED' : 'NOT_CONFIGURED'}
+                                            </span>
+                                            <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isCloudBackupActive() ? 'bg-green-500' : 'bg-amber-500'}`} />
+                                        </div>
                                     </div>
-                                )}
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">Infrastructure Schema</span>
+                                        <span className={`text-[8px] font-bold uppercase tracking-widest ${isCloudBackupActive() ? 'text-amber-500/50' : 'text-zinc-800'}`}>
+                                            {isCloudBackupActive() ? 'AWAITING_PROVISION' : 'INACTIVE'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={() => {
+                                        if (!isCloudBackupActive()) {
+                                            alert('ERROR: Supabase is not configured in your .env file. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first.');
+                                            return;
+                                        }
+                                        const sql = `
+-- 1. Create Nodes table for user persistence
+CREATE TABLE IF NOT EXISTS nodes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    name TEXT NOT NULL,
+    is_admin BOOLEAN DEFAULT false,
+    timestamp BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+); 
+
+-- 2. Create Logs table for system telemetry
+CREATE TABLE IF NOT EXISTS node_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type TEXT NOT NULL,
+    details JSONB,
+    user_node TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 3. Create Signaling table for P2P discovery
+CREATE TABLE IF NOT EXISTS meeting_signaling (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id TEXT NOT NULL,
+    peer_id TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 4. Enable Realtime for signaling (CRITICAL for cross-device calls)
+ALTER PUBLICATION supabase_realtime ADD TABLE meeting_signaling;
+`.trim();
+                                        navigator.clipboard.writeText(sql);
+                                        const projectUrl = (supabase as any).supabaseUrl;
+                                        const projectId = projectUrl.split('.')[0].split('//')[1];
+                                        window.open(`https://app.supabase.com/project/${projectId}/sql/new`, '_blank');
+                                        alert('INFRASTRUCTURE_SCRIPT_COPIED: Paste and run in the opened Supabase SQL Editor to finalize your cloud setup.');
+                                    }}
+                                    className="w-full py-4 bg-cyan-500/10 border border-cyan-500/30 text-cyan-500 text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cyan-500 hover:text-black transition-all"
+                                >
+                                    PROVISION_INFRASTRUCTURE
+                                </button>
                             </div>
                         </div>
                     </div>

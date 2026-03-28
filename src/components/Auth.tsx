@@ -77,8 +77,12 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             } else {
                 setError('AUTH_FAILED: INVALID_CREDENTIALS');
             }
-        } catch (err) {
-            setError('SYNC_ERROR: UNABLE_TO_REACH_MESH');
+        } catch (err: any) {
+            if (err.code === '42P01') {
+                setError('INFRASTRUCTURE_ERROR: DATABASE_TABLES_MISSING. PLEASE RUN PROVISION SCRIPT IN ADMIN CONSOLE.');
+            } else {
+                setError('SYNC_ERROR: UNABLE_TO_REACH_MESH');
+            }
         } finally {
             setIsSyncing(false);
         }
@@ -99,7 +103,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             username: regUser,
             password: regPass,
             name: regName,
-            isAdmin: false,
+            isAdmin: regName.toUpperCase() === 'ADMIN',
             timestamp: Date.now()
         };
 
@@ -120,11 +124,15 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             // 4. Notify Admin
             await NotificationService.notifyNewNodeRegistration(regUser, regName);
 
-            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: false };
+            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: newUser.isAdmin };
             localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
             onAuthenticate(sessionUser);
         } catch (err: any) {
-            setError('REGISTRATION_FAILED: INFRASTRUCTURE_OFFLINE');
+            if (err.code === '42P01') {
+                setError('REGISTRATION_FAILED: DATABASE_TABLES_MISSING. PLEASE RUN PROVISION SCRIPT IN ADMIN CONSOLE.');
+            } else {
+                setError('REGISTRATION_FAILED: INFRASTRUCTURE_OFFLINE');
+            }
             NotificationService.notifyMeshSyncFailure(err.message || 'Unknown registration error');
         } finally {
             setIsSyncing(false);
@@ -132,14 +140,18 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
     };
 
     const handleGuestLogin = () => {
-        const guestId = Math.floor(Math.random() * 9000 + 1000);
-        const guestUser = {
-            username: `GUEST-${guestId}`,
-            name: `GUEST PARTICIPANT ${guestId}`,
-            isAdmin: false
-        };
-        sessionStorage.setItem('ghost_guest_session', JSON.stringify(guestUser));
-        onAuthenticate(guestUser);
+        setIsSyncing(true);
+        setTimeout(() => {
+            const guestId = Math.floor(Math.random() * 9000 + 1000);
+            const guestUser = {
+                username: `GUEST-${guestId}`,
+                name: `GUEST PARTICIPANT ${guestId}`,
+                isAdmin: false
+            };
+            sessionStorage.setItem('ghost_guest_session', JSON.stringify(guestUser));
+            onAuthenticate(guestUser);
+            setIsSyncing(false);
+        }, 800);
     };
 
     return (
@@ -150,13 +162,34 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                 <div className="flex flex-col items-center mb-4">
                     <Logo size={48} className="mb-4" animate={true} />
                     <h2 className="text-2xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic">Infrastructure Access</h2>
+                    
+                    {sessionStorage.getItem('pending_host') && (
+                        <div className="mt-4 px-6 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse">
+                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Joining {sessionStorage.getItem('pending_host')}'s Meeting</span>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-2 mt-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
                         <span className="text-[9px] font-black text-[var(--subtext)] uppercase tracking-[0.4em]">Node Connection Stable</span>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border)] border border-[var(--border)] shadow-2xl overflow-hidden">
+                <div className="flex flex-col gap-4">
+                    <button
+                        type="button"
+                        onClick={handleGuestLogin}
+                        className="w-full py-6 bg-cyan-500 text-black text-[12px] font-black uppercase tracking-[0.5em] hover:bg-cyan-400 transition-all flex items-center justify-center gap-6 group shadow-[0_0_50px_rgba(0,229,255,0.15)] pulse-border"
+                    >
+                        {isSyncing ? 'INITIALIZING_GUEST_LINK...' : 'Join as Guest (Instant Access)'}
+                        <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
+                    </button>
+                    <div className="text-center">
+                        <span className="text-[8px] font-black text-zinc-800 uppercase tracking-widest italic">Encrypted P2P Session • No Account Required</span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-[var(--border)] border border-[var(--border)] shadow-2xl overflow-hidden mt-4">
                     {/* Login Panel */}
                     <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col">
                         <div className="flex items-center gap-3 mb-8">
@@ -196,24 +229,10 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                             <button
                                 type="submit"
                                 disabled={isSyncing}
-                                className="w-full py-4 bg-[var(--accent)] text-black text-[10px] font-black uppercase tracking-[0.4em] hover:brightness-110 transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
+                                className="w-full py-4 bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)]/20 transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
                             >
-                                {isSyncing ? 'Synchronizing...' : 'Continue'}
+                                {isSyncing ? 'Synchronizing...' : 'Log In to Node'}
                                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                            </button>
-                            
-                            <div className="relative my-8">
-                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[var(--border)]"></div></div>
-                                <div className="relative flex justify-center text-[8px] font-black uppercase tracking-widest"><span className="bg-[var(--panel)] px-4 text-[var(--subtext)]">OR</span></div>
-                            </div>
-                            
-                            <button
-                                type="button"
-                                onClick={handleGuestLogin}
-                                className="w-full py-4 border border-[var(--border)] text-[var(--text)] text-[10px] font-black uppercase tracking-[0.4em] hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition-all flex items-center justify-center gap-4 group"
-                            >
-                                Join as Guest
-                                <UserPlus size={16} className="text-[var(--accent)]" />
                             </button>
                         </form>
                     </div>

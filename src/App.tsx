@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import { Logo } from './components/Logo';
 import MeetCall from './components/MeetCall';
-import { LoggingService } from './services/LoggingService';
-import { ContactManager } from './components/ContactManager';
 import { Auth } from './components/Auth';
+import { AdminDashboard } from './components/AdminDashboard';
+import { Shield } from 'lucide-react';
 
 interface User {
   username: string;
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showContactManager, setShowContactManager] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [scheduledMeetings, setScheduledMeetings] = useState<any[]>([]);
   const [nodeStats, setNodeStats] = useState({ traffic: '0.0 kbps', latency: '12ms', peers: 1429 });
 
@@ -53,27 +54,15 @@ const App: React.FC = () => {
       document.body.className = savedTheme === 'light' ? 'light-mode' : '';
     }
 
-    // Check for direct join URL parameter (e.g., ?room=XYZ)
+    // Capture initial URL room parameter
     const urlParams = new URLSearchParams(window.location.search);
-    let roomParam = urlParams.get('room');
+    const roomParam = urlParams.get('room');
+    const hostParam = urlParams.get('host');
     
     if (roomParam) {
       sessionStorage.setItem('pending_room', roomParam.toUpperCase());
-      // Clean up the URL securely
-      // @ts-ignore
+      if (hostParam) sessionStorage.setItem('pending_host', hostParam);
       window.history.replaceState({}, '', window.location.pathname);
-    } else {
-      roomParam = sessionStorage.getItem('pending_room');
-    }
-
-    if (roomParam) {
-      setJoinRoomId(roomParam.toUpperCase());
-      setIsHost(false);
-      setIsMeetActive(true);
-      // Remove it from session storage only after we successfully start joining
-      if (session) {
-         sessionStorage.removeItem('pending_room');
-      }
     }
 
     const interval = setInterval(() => {
@@ -87,6 +76,20 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Dedicated effect to handle entering a room after login/auth
+  useEffect(() => {
+    if (currentUser && !isMeetActive) {
+      const pendingRoom = sessionStorage.getItem('pending_room');
+      if (pendingRoom) {
+        const savedHostState = sessionStorage.getItem(`host_privilege_${pendingRoom}`);
+        setJoinRoomId(pendingRoom);
+        setIsHost(savedHostState === 'true');
+        setIsMeetActive(true);
+        sessionStorage.removeItem('pending_room');
+      }
+    }
+  }, [currentUser, isMeetActive]);
+
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
@@ -95,7 +98,12 @@ const App: React.FC = () => {
   };
 
   const startMeeting = () => {
-    const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    // Enhanced uniqueness with timestamp prefix/suffix
+    const timeRef = Date.now().toString(36).slice(-3).toUpperCase();
+    const randRef = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const newRoomId = `${randRef}-${timeRef}`;
+    
+    sessionStorage.setItem(`host_privilege_${newRoomId}`, 'true');
     setJoinRoomId(newRoomId);
     setIsHost(true);
     setIsMeetActive(true);
@@ -179,6 +187,11 @@ const App: React.FC = () => {
           </button>
 
           <div className="flex gap-2">
+            {currentUser.isAdmin && (
+              <button onClick={() => setShowAdminDashboard(true)} className="w-9 h-8 flex items-center justify-center border border-cyan-500/20 rounded-sm bg-cyan-500/5 text-cyan-500 hover:bg-cyan-500/10 transition-all" title="Admin Console">
+                <Shield size={14} />
+              </button>
+            )}
             <button onClick={() => setShowContactManager(true)} className="w-9 h-8 flex items-center justify-center border border-[var(--border)] rounded-sm bg-[var(--btn-bg)] text-[var(--text)] hover:border-[var(--accent)]/40 transition-all">
               <UserPlus size={14} />
             </button>
@@ -242,6 +255,7 @@ const App: React.FC = () => {
 
         {showContactManager && <ContactManager onClose={() => setShowContactManager(false)} onCall={(peerId) => { joinMeeting(peerId); setShowContactManager(false); }} />}
         {showScheduleModal && <ScheduleModal onClose={() => setShowScheduleModal(false)} onSchedule={scheduleMeeting} />}
+        {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} />}
       </main>
 
       <footer className="h-6 px-4 bg-[var(--panel)] border-t border-[var(--border)] flex items-center justify-between text-[8px] font-bold text-[var(--subtext)] uppercase tracking-widest shrink-0 font-mono">
