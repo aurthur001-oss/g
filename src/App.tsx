@@ -180,6 +180,13 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentUser && joinRoomId && !isMeetActive) {
       console.log('[DEBUG] Auto-joining active room:', joinRoomId);
+      
+      // RESTORE HOST STATUS: If we were the host before refresh, stay the host.
+      const isHostSession = sessionStorage.getItem(`host_privilege_${joinRoomId}`) === 'true';
+      if (isHostSession) {
+        setIsHost(true);
+      }
+      
       const timer = setTimeout(() => {
         setIsMeetActive(true);
       }, 500);

@@ -297,13 +297,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
 
 
-
     // Mobile Fix: Global user interaction listener to resume AudioContexts
     useEffect(() => {
         const handleInteraction = () => {
             const allAudios = document.querySelectorAll('video');
             allAudios.forEach(v => {
-                if (v.paused && v.srcObject) v.play().catch(() => {});
+                if (v.paused && v.srcObject) (v as HTMLVideoElement).play().catch(() => {});
             });
             // We can't easily access the component's audioCtx from here, 
             // but the VideoTile click handler will take care of it too.
@@ -315,6 +314,25 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             window.removeEventListener('touchstart', handleInteraction);
         };
     }, []);
+
+    // 0. Lobby Pulse (Participant Side)
+    useEffect(() => {
+        if (isHost || isAdmitted || !hasMediaAccess) return;
+        
+        const hostId = `GHOST-CONF-${roomId}-HOST`;
+        const pulse = setInterval(() => {
+            const conn = dataConnsRef.current.get(hostId);
+            if (conn && conn.open) {
+                conn.send({ type: 'LOBBY_REQUEST', codename: myCodename });
+                console.log('[LOBBY] Pulsing admission request to Host');
+            } else {
+                // If connection lost, try to reconnect to Host
+                connectToPeer(hostId);
+            }
+        }, 10000); // 10s pulse
+        
+        return () => clearInterval(pulse);
+    }, [isHost, isAdmitted, roomId, myCodename, hasMediaAccess]);
 
     useEffect(() => {
         const handleUnload = async () => {
