@@ -591,7 +591,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     };
 
     const updatePeerCodename = (peerId: string, codename: string, role: NodeRole) => {
-        setRemotePeers((prev) => prev.map((p) => (p.peerId === peerId ? { ...p, codename, role } : p)));
+        setRemotePeers((prev) => {
+            const exists = prev.find((p) => p.peerId === peerId);
+            if (exists) return prev.map((p) => (p.peerId === peerId ? { ...p, codename, role } : p));
+            return [...prev, { peerId, codename, role, stream: null }];
+        });
     };
 
     const addSystemMessage = (text: string) => {
@@ -659,7 +663,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         const autoOff = remotePeers.length > 8;
         
         setRemotePeers((prev) => {
-            if (prev.find((p) => p.peerId === peerId)) {
+            const exists = prev.find((p) => p.peerId === peerId);
+            if (exists) {
                 return prev.map((p) => p.peerId === peerId ? { ...p, stream } : p);
             }
             return [...prev, { 
