@@ -21,7 +21,8 @@ import {
     BookOpen,
     Shield,
     ToggleLeft,
-    ToggleRight
+    ToggleRight,
+    UserPlus
 } from 'lucide-react';
 import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
