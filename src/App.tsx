@@ -93,7 +93,10 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isMeetActive, setIsMeetActive] = useState(false);
   const [isHost, setIsHost] = useState(false);
-  const [joinRoomId, setJoinRoomId] = useState<string | null>(null);
+  const [joinRoomId, setJoinRoomId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('room');
+  });
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -108,6 +111,12 @@ const App: React.FC = () => {
   const [sessionWarning, setSessionWarning] = useState<{ active: boolean; type: 'inactivity' | 'total'; timeLeft: number }>({ active: false, type: 'total', timeLeft: 120 });
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlRoom = params.get('room');
+    if (urlRoom) {
+      console.log('[DEBUG] Incoming Room Target Detected:', urlRoom);
+    }
+
     try {
       const session = localStorage.getItem('ghost_session');
       if (session && session !== 'undefined') {
@@ -147,21 +156,16 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Dedicated effect to handle entering a room after login/auth (staggered for stability)
+  // IMMEDIATE AUTO-JOIN (Definitive fix for "Different Room" issue)
   useEffect(() => {
-    if (currentUser && !isMeetActive) {
-      const pendingRoom = sessionStorage.getItem('pending_room');
-      if (pendingRoom) {
-        setTimeout(() => {
-          const savedHostState = sessionStorage.getItem(`host_privilege_${pendingRoom}`);
-          setJoinRoomId(pendingRoom);
-          setIsHost(savedHostState === 'true');
-          setIsMeetActive(true);
-          sessionStorage.removeItem('pending_room');
-        }, 800);
-      }
+    if (currentUser && joinRoomId && !isMeetActive) {
+      console.log('[DEBUG] Auto-joining active room:', joinRoomId);
+      const timer = setTimeout(() => {
+        setIsMeetActive(true);
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [currentUser, isMeetActive]);
+  }, [currentUser, joinRoomId, isMeetActive]);
 
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -265,6 +269,13 @@ const App: React.FC = () => {
             <Logo size={80} className="mb-8" animate={true} />
             <h1 className="text-4xl md:text-5xl font-light tracking-tighter text-[var(--text)] mb-4 italic chromatic">Secure Communication</h1>
             <p className="text-[10px] font-black text-[var(--subtext)] uppercase tracking-[0.4em] mb-12">Encrypted Video Infrastructure</p>
+
+            {joinRoomId && !isMeetActive && (
+              <div className="mb-12 p-6 bg-cyan-500/10 border border-cyan-500/30 animate-pulse text-center">
+                <span className="text-[10px] font-black text-white uppercase tracking-[0.3em] block">UPLINK_IN_PROGRESS</span>
+                <span className="text-[8px] font-bold text-cyan-500 uppercase tracking-widest mt-2 block italic">Stabilizing connection to room: {joinRoomId}</span>
+              </div>
+            )}
 
             <div className="flex flex-col md:flex-row gap-6 w-full max-w-lg mb-12">
               <button

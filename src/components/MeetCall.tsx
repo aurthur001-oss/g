@@ -168,7 +168,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         let pulseInterval: any = null;
 
         if (isCloudBackupActive()) {
-            // 1. Discovery Channel
+            // 1. Discovery Channel: Listen for FUTURE peers joining
             signalChannel = (supabase as any)
                 .channel(`signaling-${roomId}`)
                 .on('postgres_changes', { 
@@ -179,13 +179,33 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 }, (payload: any) => {
                     const newPeerId = payload.new.peer_id;
                     if (newPeerId !== peerRef.current?.id) {
-                        console.log(`[SIGNALING] Discovery via Cloud: ${newPeerId}`);
+                        console.log(`[SIGNALING] Discovery (INSERT): ${newPeerId}`);
                         connectToPeer(newPeerId);
                     }
                 })
                 .subscribe();
 
-            // 2. Active Meeting Registry (Host Only)
+            // 2. Initial Discovery: Fetch EXISTING peers immediately
+            const fetchExistingPeers = async () => {
+                const { data } = await (supabase as any)
+                    .from('meeting_signaling')
+                    .select('peer_id')
+                    .eq('room_id', roomId);
+                
+                if (data && data.length > 0) {
+                    console.log(`[SIGNALING] Discovery (INITIAL): Found ${data.length} existing nodes`);
+                    data.forEach((p: any) => {
+                        if (p.peer_id !== peerRef.current?.id) {
+                            connectToPeer(p.peer_id);
+                        }
+                    });
+                }
+            };
+            
+            // Wait a small delay for Peer to open before fetching
+            const timer = setTimeout(fetchExistingPeers, 1500);
+
+            // 3. Active Meeting Registry (Host Only)
             if (isHost || myRole === 'origin') {
                 const registerMeeting = async () => {
                     await (supabase as any).from('active_meetings').upsert({
@@ -199,19 +219,29 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 registerMeeting();
                 pulseInterval = setInterval(registerMeeting, 30000); // 30s pulse
             }
+
+            return () => {
+                clearTimeout(timer);
+                localStreamRef.current?.getTracks().forEach((t) => t.stop());
+                screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+                peerRef.current?.destroy();
+                if (signalChannel) (supabase as any).removeChannel(signalChannel);
+                if (pulseInterval) clearInterval(pulseInterval);
+                
+                // Cleanup presence on exit
+                if (isCloudBackupActive()) {
+                    (supabase as any).from('meeting_signaling').delete().eq('room_id', roomId).eq('peer_id', peerRef.current?.id);
+                    if (isHost || myRole === 'origin') {
+                      (supabase as any).from('active_meetings').delete().eq('room_id', roomId);
+                    }
+                }
+            };
         }
 
         return () => {
             localStreamRef.current?.getTracks().forEach((t) => t.stop());
             screenStreamRef.current?.getTracks().forEach((t) => t.stop());
             peerRef.current?.destroy();
-            if (signalChannel) (supabase as any).removeChannel(signalChannel);
-            if (pulseInterval) clearInterval(pulseInterval);
-            
-            // Cleanup registry on exit if host
-            if ((isHost || myRole === 'origin') && isCloudBackupActive()) {
-                (supabase as any).from('active_meetings').delete().eq('room_id', roomId);
-            }
         };
     }, [reqMic, reqCam]);
 

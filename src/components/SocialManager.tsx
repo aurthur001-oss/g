@@ -15,7 +15,7 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
     const [isSearching, setIsSearching] = useState(false);
     const [statusMsg, setStatusMsg] = useState('');
 
-    const isGuest = currentUser.username.startsWith('GUEST-');
+    const isGuest = currentUser.username.startsWith('GUEST_');
 
     useEffect(() => {
         if (isGuest) return;
@@ -128,15 +128,17 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                     </div>
 
                     {searchResult && (
-                        <div className="mt-4 p-4 bg-cyan-500/5 border border-cyan-500/20 flex items-center justify-between animate-in slide-in-from-top-2">
+                        <div className="mt-4 p-6 bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-[0_0_30px_rgba(0,229,255,0.1)]">
                             <div className="flex items-center gap-4">
-                                <div className="w-8 h-8 rounded-full bg-cyan-500 flex items-center justify-center text-black font-black text-[10px]">{searchResult.username.slice(0, 1)}</div>
+                                <div className="w-10 h-10 rounded-sm bg-cyan-500 flex items-center justify-center text-black font-black text-[12px] shadow-[0_0_15px_rgba(0,229,255,0.4)]">{searchResult.username.slice(0, 1)}</div>
                                 <div>
-                                    <span className="block text-[10px] font-black text-white tracking-widest">{searchResult.username}</span>
-                                    <span className="block text-[8px] text-cyan-500 uppercase">{searchResult.name}</span>
+                                    <span className="block text-[12px] font-black text-white tracking-widest">{searchResult.username}</span>
+                                    <span className="block text-[8px] text-cyan-500 uppercase font-black">{searchResult.name}</span>
                                 </div>
                             </div>
-                            <button onClick={addFriend} className="px-4 py-2 bg-cyan-500 text-black text-[8px] font-black uppercase tracking-widest hover:bg-white transition-all">Add Friend</button>
+                            <button onClick={addFriend} className="px-8 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500 transition-all shadow-xl">
+                                AUTHORIZE_ADD_FRIEND
+                            </button>
                         </div>
                     )}
 
@@ -172,10 +174,11 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => onStartChat(friend)}
-                                        className="w-10 h-10 flex items-center justify-center bg-cyan-500 text-black rounded-sm hover:bg-cyan-400 transition-all shadow-[0_0_15px_rgba(0,229,255,0.3)]"
+                                        className="h-10 px-4 flex items-center justify-center gap-3 bg-cyan-500 text-black rounded-sm hover:bg-cyan-400 transition-all shadow-[0_0_20px_rgba(0,229,255,0.3)] group/btn"
                                         title="Instant Message"
                                     >
                                         <MessageSquare size={16} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest pr-2 border-l border-black/10 pl-3">START_CHAT</span>
                                     </button>
                                     <button
                                         onClick={() => removeFriend(friend.username)}
