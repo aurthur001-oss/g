@@ -230,9 +230,10 @@ const App: React.FC = () => {
     return () => { if (sub) (supabase as any).removeChannel(sub); };
   }, [isMeetActive, currentUser]);
 
-  const handleLogout = () => {
+  const handleLogout = (forcedMode?: 'guest' | 'account') => {
     localStorage.removeItem('ghost_session');
     sessionStorage.removeItem('ghost_guest_session');
+    if (forcedMode) sessionStorage.setItem('auth_initial_view', forcedMode);
     setCurrentUser(null);
     setIsMeetActive(false);
   };
@@ -280,8 +281,8 @@ const App: React.FC = () => {
               onClick={() => {
                 const isGuest = sessionStorage.getItem('ghost_guest_session');
                 if (isGuest) {
-                  if (confirm('SOCIAL_LOCK: REGISTERED_NODES_ONLY. REDIRECT_TO_UPLINK_STATION?')) {
-                    handleLogout();
+                  if (confirm('SOCIAL_LOCK: REGISTERED_NODES_ONLY. REDIRECT_TO_ACCOUNT_STATION?')) {
+                    handleLogout('account');
                   }
                 } else {
                   setShowSocialManager(true);

@@ -10,8 +10,14 @@ interface AuthProps {
 }
 
 export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
-    const [view, setView] = useState<'guest' | 'admin'>('guest');
-    const [guestName, setGuestName] = useState('');
+    const [view, setView] = useState<'guest' | 'account'>(() => {
+        const saved = sessionStorage.getItem('auth_initial_view');
+        if (saved === 'account' || saved === 'guest') {
+            sessionStorage.removeItem('auth_initial_view');
+            return saved as any;
+        }
+        return 'guest';
+    });
     const [loginUser, setLoginUser] = useState('');
     const [loginPass, setLoginPass] = useState('');
     const [regUser, setRegUser] = useState('');
@@ -231,11 +237,11 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
 
                         <div className="text-center pt-8">
                             <button 
-                                onClick={() => setView('admin')}
+                                onClick={() => setView('account')}
                                 className="text-[9px] font-black text-zinc-900 uppercase tracking-[0.3em] hover:text-[var(--accent)] transition-all flex items-center justify-center gap-2 mx-auto decoration-transparent hover:decoration-[var(--accent)] underline underline-offset-8"
                             >
                                 <Shield size={12} />
-                                NODE_ADMINISTRATOR_LOGIN
+                                ACCOUNT_MANAGEMENT_STATION
                             </button>
                         </div>
                     </div>
