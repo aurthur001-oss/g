@@ -284,6 +284,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const callsRef = useRef<Map<string, any>>(new Map());
     const dataConnsRef = useRef<Map<string, DataConnection>>(new Map());
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const admittedPeersRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -329,7 +330,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 // If connection lost, try to reconnect to Host
                 connectToPeer(hostId);
             }
-        }, 10000); // 10s pulse
+        }, 30000); // 30s pulse
         
         return () => clearInterval(pulse);
     }, [isHost, isAdmitted, roomId, myCodename, hasMediaAccess]);
@@ -603,6 +604,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 updatePeerCodename(conn.peer, data.codename, data.role);
                 addSystemMessage(`${data.codename.toUpperCase()} ENTERED THE MEETING`);
             } else if (data.type === 'LOBBY_REQUEST') {
+                // GUARD: If peer is already admitted, ignore the request
+                if (admittedPeersRef.current.has(conn.peer)) {
+                    console.log(`[LOBBY] Ignoring pulse from already admitted peer: ${conn.peer}`);
+                    return;
+                }
+                
                 setLobbyPeers((prev) => {
                     if (prev.find(p => p.peerId === conn.peer)) return prev;
                     return [...prev, { peerId: conn.peer, codename: data.codename }];
@@ -871,6 +878,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const admitPeer = (peerId: string) => {
         const conn = dataConnsRef.current.get(peerId);
         if (conn) {
+            admittedPeersRef.current.add(peerId);
             conn.send({ type: 'LOBBY_ADMIT' });
             setLobbyPeers((prev) => prev.filter(p => p.peerId !== peerId));
             addSystemMessage(`ADMISSION SIGNAL SENT. WAITING FOR ACK...`);
