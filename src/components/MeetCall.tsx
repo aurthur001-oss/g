@@ -273,7 +273,16 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
             localStreamRef.current = stream;
             setHasMediaAccess(true);
+        } catch (err) {
+            console.warn('[HARDWARE] Access denied or blocked. Falling back to Silent Mode.', err);
+            localStreamRef.current = new MediaStream();
+            setHasMediaAccess(true); // Allow proceeding in silent mode
+            setIsMuted(true);
+            setIsCameraOff(true);
+            addSystemMessage('HARDWARE_LOCKED: ENTERING IN SILENT_NODE (OBSERVER_ONLY)');
+        }
 
+        try {
             const myId = myRole === 'origin' 
                 ? `GHOST-CONF-${roomId}-HOST` 
                 : `GHOST-CONF-${roomId}-PART-${Math.random().toString(36).substring(2, 6)}`;
