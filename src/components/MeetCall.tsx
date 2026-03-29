@@ -71,6 +71,8 @@ interface VideoTileProps {
     role: NodeRole;
     codename: string;
     isEnhanced?: boolean;
+    onAddContact?: () => void;
+    onKick?: () => void;
 }
 
 // --- Helper Components (Hoisted to avoid TDZ) ---
@@ -90,7 +92,7 @@ function PermissionToggle({ icon, label, desc, active, onClick, title }: Permiss
     );
 }
 
-function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact, isLowLight }: VideoTileProps & { isLowLight?: boolean }) {
+function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact, onKick, isLowLight }: VideoTileProps & { isLowLight?: boolean }) {
     const internalVideoRef = useRef<HTMLVideoElement>(null);
     const videoRef = externalVideoRef || internalVideoRef;
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -182,6 +184,11 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
                     {!isLocal && onAddContact && (
                         <button onClick={(e) => { e.stopPropagation(); onAddContact(); }} title="Add to Contacts" className="ml-2 text-zinc-500 hover:text-cyan-500 transition-colors pointer-events-auto">
                             <UserPlus size={12} />
+                        </button>
+                    )}
+                    {!isLocal && onKick && (
+                        <button onClick={(e) => { e.stopPropagation(); onKick(); }} title="Remove from Meeting" className="ml-2 text-zinc-500 hover:text-red-500 transition-colors pointer-events-auto">
+                            <UserMinus size={12} />
                         </button>
                     )}
                 </div>
@@ -575,6 +582,9 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 setTimeout(() => {
                     connectToPeer(data.targetPeerId);
                 }, delay);
+            } else if (data.type === 'KICK_SIGNAL') {
+                addSystemMessage('ADMIN_NOTICE: YOU HAVE BEEN REMOVED FROM THE MEETING');
+                setTimeout(() => endCall(), 2000);
             }
         });
         conn.on('close', () => dataConnsRef.current.delete(conn.peer));
@@ -791,6 +801,15 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         }
     };
 
+    const kickPeer = (peerId: string) => {
+        const conn = dataConnsRef.current.get(peerId);
+        if (conn) {
+            conn.send({ type: 'KICK_SIGNAL' });
+            removePeer(peerId);
+            addSystemMessage(`REMOVED PARTICIPANT FROM SESSION`);
+        }
+    };
+
     const addToContacts = (peerId: string, name: string) => {
         const saved = localStorage.getItem('ghost_contacts');
         const contacts = saved ? JSON.parse(saved) : [];
@@ -942,7 +961,16 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                                     <VideoTile stream={localStreamRef.current} isMuted={true} isCameraOff={isCameraOff && !isScreenSharing} isLocal={true} isScreen={isScreenSharing} videoRef={localVideoRef} role={myRole} codename={myCodename} isEnhanced={isEnhanced} isLowLight={isLowLight} />
                                 )}
                                 {remotePeers.filter((p) => p.role !== 'shadow').map((peer) => (
-                                    <VideoTile key={peer.peerId} stream={peer.stream} role={peer.role} codename={peer.codename} isEnhanced={isEnhanced} onAddContact={() => addToContacts(peer.peerId, peer.codename)} isLowLight={isLowLight} />
+                                    <VideoTile 
+                                        key={peer.peerId} 
+                                        stream={peer.stream} 
+                                        role={peer.role} 
+                                        codename={peer.codename} 
+                                        isEnhanced={isEnhanced} 
+                                        onAddContact={() => addToContacts(peer.peerId, peer.codename)} 
+                                        onKick={isHost ? () => kickPeer(peer.peerId) : undefined}
+                                        isLowLight={isLowLight} 
+                                    />
                                 ))}
                             </div>
                             <div className="mt-12 flex flex-wrap justify-center gap-4">
@@ -1007,6 +1035,49 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     </aside>
                 )}
             </main>
+
+            {/* Modals */}
+            {showSettings && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="w-full max-w-sm bg-[#050505] border border-white/10 p-8 shadow-2xl relative">
+                        <button onClick={() => setShowSettings(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X size={18} /></button>
+                        <h3 className="text-sm font-black uppercase tracking-[0.3em] text-white mb-8 italic">System Settings</h3>
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[7px] font-black text-zinc-600 uppercase tracking-widest">Microphone Sensitivity</label>
+                                <input type="range" min="0" max="200" value={micBoost} onChange={(e) => setMicBoost(Number(e.target.value))} className="w-full h-1 bg-white/5 accent-cyan-500" />
+                                <div className="flex justify-between text-[6px] font-mono text-zinc-800 uppercase tracking-widest"><span>Standard</span><span>{micBoost}%</span></div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[7px] font-black text-zinc-600 uppercase tracking-widest">Speaker Volume</label>
+                                <input type="range" min="0" max="200" value={speakerBoost} onChange={(e) => setSpeakerBoost(Number(e.target.value))} className="w-full h-1 bg-white/5 accent-cyan-500" />
+                                <div className="flex justify-between text-[6px] font-mono text-zinc-800 uppercase tracking-widest"><span>Muted</span><span>{speakerBoost}%</span></div>
+                            </div>
+                            <button onClick={() => setShowSettings(false)} className="w-full py-3 bg-white/[0.02] border border-white/5 text-zinc-500 text-[8px] font-black uppercase tracking-widest hover:text-white transition-all">Close Console</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showBriefing && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="w-full max-w-2xl bg-[#050205] border border-white/10 p-8 shadow-2xl relative">
+                        <button onClick={() => setShowBriefing(false)} className="absolute top-4 right-4 text-zinc-500 hover:text-white"><X size={18} /></button>
+                        <div className="flex items-center gap-4 mb-8">
+                             <div className="w-10 h-10 bg-cyan-500/5 border border-cyan-500/10 flex items-center justify-center"><BookOpen size={18} className="text-cyan-500" /></div>
+                             <h3 className="text-sm font-black uppercase tracking-[0.3em] text-white italic">Meeting Notes</h3>
+                        </div>
+                        <textarea 
+                            className="w-full h-64 bg-black/40 border border-white/5 p-6 text-[11px] text-zinc-400 font-mono leading-relaxed focus:outline-none focus:border-cyan-500/20 no-scrollbar resize-none"
+                            placeholder="Enter session notes here. These are local to this terminal..."
+                        />
+                        <div className="mt-8 flex justify-between items-center text-[7px] font-mono text-zinc-800 uppercase tracking-widest">
+                            <span>Local Buffer: 1024KB Available</span>
+                            <button onClick={() => setShowBriefing(false)} className="text-cyan-500 hover:text-white transition-all underline decoration-dotted">Minimize Notes</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {hasMediaAccess && (
                 <footer className="fixed bottom-0 left-0 right-0 bg-[var(--panel)]/90 backdrop-blur-3xl border-t border-[var(--border)] z-50 transition-all">
