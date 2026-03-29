@@ -95,6 +95,7 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
     const videoRef = externalVideoRef || internalVideoRef;
     const audioCtxRef = useRef<AudioContext | null>(null);
     const gainNodeRef = useRef<GainNode | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -154,11 +155,12 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
               autoPlay 
               playsInline 
               muted={isLocal || isMuted} 
+              onPlay={() => setIsPlaying(true)}
               style={{ filter: isLowLight ? 'brightness(1.5) contrast(1.2) saturate(1.1)' : (isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none') }} 
               className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} 
             />
             
-            {!isLocal && !isCameraOff && (
+            {!isLocal && !isCameraOff && !isPlaying && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 pointer-events-none">
                      <div className="bg-cyan-500/20 backdrop-blur-sm border border-cyan-500/40 p-2 rounded-full">
                         <MonitorUp size={16} className="text-cyan-400" />
