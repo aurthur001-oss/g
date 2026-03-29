@@ -902,7 +902,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                             <div className="relative flex gap-2">
                                 <input 
                                     className="flex-1 bg-[#050505] border border-white/10 py-3 pl-4 pr-10 text-[10px] text-white focus:outline-none focus:border-cyan-500/30 font-mono italic" 
-                                    placeholder={isGuest ? "GUEST_READ_ONLY..." : "MSG_UPLINK..."} 
+                                    placeholder={isGuest ? "READ_ONLY_MODE..." : "Type a message..."} 
                                     value={chatInput} 
                                     onChange={(e) => setChatInput(e.target.value)} 
                                     onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
@@ -959,7 +959,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                                     <span className="text-[6px] font-black text-[var(--subtext)] uppercase">Audio Out</span>
                                     <input type="range" min="100" max="200" value={speakerBoost} onChange={(e) => setSpeakerBoost(Number(e.target.value))} className="w-16 accent-[var(--accent)]" />
                                 </div>
-                                <button onClick={() => setIsEnhanced(!isEnhanced)} className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border transition-all ${isEnhanced ? 'bg-[var(--accent)] text-black border-[var(--accent)]' : 'text-[var(--subtext)] border-[var(--border)] bg-[var(--btn-bg)]'}`}>Elite Mode</button>
+                                <button onClick={() => setIsEnhanced(!isEnhanced)} className={`px-2 py-1 text-[7px] font-black uppercase tracking-widest border transition-all ${isEnhanced ? 'bg-[var(--accent)] text-black border-[var(--accent)]' : 'text-[var(--subtext)] border-[var(--border)] bg-[var(--btn-bg)]'}`}>HD Mode</button>
                             </div>
                         </div>
                     </div>

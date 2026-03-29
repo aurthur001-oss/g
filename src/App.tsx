@@ -256,8 +256,8 @@ const App: React.FC = () => {
         <div className="flex items-center gap-4">
           <Logo size={28} animate={isMeetActive} />
           <div className="flex flex-col">
-            <span className="text-[10px] font-black tracking-tighter text-[var(--accent)] uppercase leading-none">Video Infrastructure</span>
-            <span className="text-[7px] font-bold text-[var(--subtext)] uppercase tracking-widest mt-0.5">User: {currentUser?.name || 'NODE'}</span>
+            <span className="text-[10px] font-black tracking-tighter text-[var(--accent)] uppercase leading-none">Secure Meetings</span>
+            <span className="text-[7px] font-bold text-[var(--subtext)] uppercase tracking-widest mt-0.5">User: {currentUser?.name || 'GUEST'}</span>
           </div>
         </div>
 
@@ -268,7 +268,7 @@ const App: React.FC = () => {
 
           <button onClick={handleLogout} className="px-3 h-8 flex items-center justify-center border border-red-500/20 text-red-500 text-[8px] font-black uppercase tracking-widest hover:bg-red-500/10 bg-red-500/5 transition-all gap-2" title="Sign Out">
             <LogOut size={12} />
-            <span className="hidden lg:inline">Disconnect</span>
+            <span className="hidden lg:inline">Sign Out</span>
           </button>
 
           <div className="flex gap-2">
@@ -281,7 +281,7 @@ const App: React.FC = () => {
               onClick={() => {
                 const isGuest = sessionStorage.getItem('ghost_guest_session');
                 if (isGuest) {
-                  if (confirm('SOCIAL_LOCK: REGISTERED_NODES_ONLY. REDIRECT_TO_ACCOUNT_STATION?')) {
+                  if (confirm('ACCOUNT_LOCK: REGISTERED_USERS_ONLY. GO_TO_SIGN_IN_PAGE?')) {
                     handleLogout('account');
                   }
                 } else {
@@ -289,7 +289,7 @@ const App: React.FC = () => {
                 }
               }} 
               className="w-9 h-8 flex items-center justify-center border border-cyan-500/20 rounded-sm bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 transition-all group overflow-hidden" 
-              title="Social Mesh (Authenticated Only)"
+              title="Contacts (Sign In to Access)"
             >
               <UserPlus className="animate-pulse group-hover:scale-125 transition-transform" size={14} />
             </button>
@@ -301,13 +301,13 @@ const App: React.FC = () => {
         {!isMeetActive ? (
           <div className="h-full w-full flex flex-col items-center justify-center p-8">
             <Logo size={80} className="mb-8" animate={true} />
-            <h1 className="text-4xl md:text-5xl font-light tracking-tighter text-[var(--text)] mb-4 italic chromatic">Secure Communication</h1>
-            <p className="text-[10px] font-black text-[var(--subtext)] uppercase tracking-[0.4em] mb-12">Encrypted Video Infrastructure</p>
+            <h1 className="text-4xl md:text-5xl font-light tracking-tighter text-[var(--text)] mb-4 italic chromatic">Video Conferencing</h1>
+            <p className="text-[10px] font-black text-[var(--subtext)] uppercase tracking-[0.4em] mb-12">Simple, Secure, Peer-to-Peer Meetings</p>
 
             {joinRoomId && !isMeetActive && (
               <div className="mb-12 p-6 bg-cyan-500/10 border border-cyan-500/30 animate-pulse text-center">
-                <span className="text-[10px] font-black text-white uppercase tracking-[0.3em] block">UPLINK_IN_PROGRESS</span>
-                <span className="text-[8px] font-bold text-cyan-500 uppercase tracking-widest mt-2 block italic">Stabilizing connection to room: {joinRoomId}</span>
+                <span className="text-[10px] font-black text-white uppercase tracking-[0.3em] block">JOINING_MEETING...</span>
+                <span className="text-[8px] font-bold text-cyan-500 uppercase tracking-widest mt-2 block italic">Connecting to room: {joinRoomId}</span>
               </div>
             )}
 
@@ -338,10 +338,10 @@ const App: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-4xl mt-16">
-              <Stat label="MESH_LATENCY" val={nodeStats.latency} />
-              <Stat label="ACTIVE_NODES" val={nodeStats.peers.toLocaleString()} />
-              <Stat label="UPLINK" val="STABLE" />
-              <Stat label="ENCRYPTION" val="AES-256" />
+              <Stat label="CONNECTION" val={nodeStats.latency} />
+              <Stat label="ACTIVE_USERS" val={nodeStats.peers.toLocaleString()} />
+              <Stat label="STATUS" val="CONNECTED" />
+              <Stat label="SECURITY" val="AES-256" />
             </div>
           </div>
         ) : (

@@ -100,7 +100,7 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                             <Zap className="text-cyan-500 animate-pulse" size={24} />
                         </div>
                         <div>
-                            <h3 className="text-xl font-light uppercase tracking-tight text-white italic">Neural Social Mesh</h3>
+                            <h3 className="text-xl font-light uppercase tracking-tight text-white italic">Contacts</h3>
                             <p className="text-[8px] font-black text-cyan-900 uppercase tracking-[0.3em] mt-1">Logged in as: {currentUser.username}</p>
                         </div>
                     <button onClick={onClose} className="w-10 h-10 flex items-center justify-center text-zinc-700 hover:text-white transition-all"><X size={20} /></button>
@@ -123,7 +123,7 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                             disabled={isSearching}
                             className="px-6 bg-cyan-500/10 border border-cyan-500/30 text-cyan-500 text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all disabled:opacity-50"
                         >
-                            {isSearching ? 'SEARCHING...' : 'DISCOVER'}
+                            {isSearching ? 'SEARCHING...' : 'SEARCH'}
                         </button>
                     </div>
 
@@ -140,7 +140,7 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                                 </div>
                             </div>
                             <button onClick={addFriend} className="px-8 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500 transition-all shadow-xl">
-                                AUTHORIZE_ADD_FRIEND
+                                ADD_TO_CONTACTS
                             </button>
                         </div>
                     )}

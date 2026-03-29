@@ -139,7 +139,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             <Shield className="text-cyan-500" size={24} />
                         </div>
                         <div>
-                            <h3 className="text-xl font-light uppercase tracking-tight text-white italic">Management Console</h3>
+                            <h3 className="text-xl font-light uppercase tracking-tight text-white italic">Admin Dashboard</h3>
                             <p className="text-[8px] font-black text-zinc-800 uppercase tracking-[0.5em] mt-1 ml-[0.5em]">System Administration & Monitoring</p>
                         </div>
                     </div>
@@ -164,7 +164,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <Terminal size={14} className="text-zinc-700" />
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">System Event Logs</h4>
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Activity Logs</h4>
                         </div>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-800" size={12} />
@@ -211,7 +211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                         <div className="border border-white/5 bg-black flex flex-col">
                             <div className="bg-white/5 px-6 py-3 flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase tracking-widest">User Node Management</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest">Manage Participants</span>
                                 <Shield size={14} className="text-zinc-700" />
                             </div>
                             <div className="max-h-[350px] overflow-y-auto no-scrollbar flex-1">
@@ -251,7 +251,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                             onClick={() => deleteUser(user.username)}
                                                             className="text-red-900 hover:text-red-500 transition-colors uppercase font-black text-[8px] tracking-widest"
                                                         >
-                                                            Decommission
+                                                            Remove User
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -358,7 +358,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE active_meetings;
                                     }}
                                     className="w-full py-4 bg-cyan-500/10 border border-cyan-500/30 text-cyan-500 text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cyan-500 hover:text-black transition-all"
                                 >
-                                    PROVISION_INFRASTRUCTURE
+                                    PROVISION_DATABASE
                                 </button>
                             </div>
                         </div>

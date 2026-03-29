@@ -187,12 +187,12 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             <div className="w-full max-w-6xl relative animate-in fade-in zoom-in-95 duration-700 flex flex-col gap-8 pt-12 md:pt-24 z-10">
                 <div className="flex flex-col items-center text-center">
                     <Logo size={64} className="mb-6" animate={true} />
-                    <h1 className="text-3xl md:text-5xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">GHOST INFRASTRUCTURE</h1>
-                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.5em] mt-2 px-12 opacity-80">Mission Critical P2P Video Communication</p>
+                    <h1 className="text-3xl md:text-5xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">Video Conference</h1>
+                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.5em] mt-2 px-12 opacity-80">Simple, Secure, P2P Meetings</p>
                     
                     {sessionStorage.getItem('pending_host') && (
                         <div className="mt-6 px-6 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse">
-                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest italic">JOINING_{sessionStorage.getItem('pending_host')}_ENCRYPTED_SIGNAL</span>
+                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest italic">JOINING_{sessionStorage.getItem('pending_host')}_MEETING</span>
                         </div>
                     )}
                 </div>
@@ -201,13 +201,13 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                     <div className="w-full max-w-md mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                         <form onSubmit={handleGuestLogin} className="space-y-6">
                             <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.3em] pl-1">Your Call Sign (Optional Name)</label>
+                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.3em] pl-1">Your Display Name</label>
                                 <div className="relative group">
                                     <Terminal className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)] group-focus-within:text-[var(--accent)] transition-colors" size={16} />
                                     <input
                                         type="text"
                                         className="w-full bg-[var(--panel)] border border-[var(--border)] py-5 pl-12 pr-4 text-[var(--text)] text-[12px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 focus:ring-1 focus:ring-[var(--accent)]/20 transition-all placeholder:text-zinc-800"
-                                        placeholder="ENTER_NAME_OR_PROCEED_AS_ANON"
+                                        placeholder="ENTER_NAME_OR_PROCEED_AS_GUEST"
                                         value={guestName}
                                         onChange={e => setGuestName(e.target.value.toUpperCase())}
                                     />
@@ -219,7 +219,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                                 disabled={isSyncing}
                                 className="w-full py-6 bg-[var(--accent)] text-black text-[12px] font-black uppercase tracking-[0.5em] hover:bg-white hover:scale-[1.01] transition-all flex items-center justify-center gap-6 group shadow-[0_0_50px_rgba(0,229,255,0.15)] pulse-border disabled:opacity-50"
                             >
-                                {isSyncing ? 'STABILIZING_SIGNAL...' : 'INITIATE_INSTANCE'}
+                                {isSyncing ? 'CONNECTING...' : 'JOIN_MEETING'}
                                 <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
                             </button>
                         </form>
@@ -241,7 +241,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                                 className="text-[9px] font-black text-zinc-900 uppercase tracking-[0.3em] hover:text-[var(--accent)] transition-all flex items-center justify-center gap-2 mx-auto decoration-transparent hover:decoration-[var(--accent)] underline underline-offset-8"
                             >
                                 <Shield size={12} />
-                                ACCOUNT_MANAGEMENT_STATION
+                                SIGN_IN_OR_CREATE_ACCOUNT
                             </button>
                         </div>
                     </div>
@@ -252,7 +252,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                             <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col">
                                 <div className="flex items-center gap-3 mb-8">
                                     <LogIn size={20} className="text-[var(--accent)]" />
-                                    <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Direct Node Login</h3>
+                                    <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Sign In</h3>
                                 </div>
 
                                 <form onSubmit={handleLogin} className="space-y-6 flex-1">
@@ -289,7 +289,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                                         disabled={isSyncing}
                                         className="w-full py-4 bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)]/20 transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
                                     >
-                                        {isSyncing ? 'Synchronizing...' : 'Log In to Node'}
+                                        {isSyncing ? 'Signing In...' : 'Sign In Now'}
                                         <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                                     </button>
                                 </form>
@@ -299,7 +299,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                             <div className="bg-[var(--panel)] p-8 md:p-12 relative flex flex-col border-t md:border-t-0 md:border-l border-[var(--border)]">
                                 <div className="flex items-center gap-3 mb-8">
                                     <UserPlus size={20} className="text-[var(--accent)]" />
-                                    <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Request Clearance</h3>
+                                    <h3 className="text-xl font-bold uppercase tracking-widest text-[var(--text)]">Sign Up</h3>
                                 </div>
 
                                 <form onSubmit={handleRegister} className="space-y-6 flex-1">
@@ -350,7 +350,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                                         disabled={isSyncing}
                                         className="w-full py-4 border border-[var(--accent)] text-[var(--accent)] text-[10px] font-black uppercase tracking-[0.4em] hover:bg-[var(--accent)] hover:text-black transition-all flex items-center justify-center gap-4 group mt-8 disabled:opacity-50"
                                     >
-                                        {isSyncing ? 'Broadcasting...' : 'Register'}
+                                        {isSyncing ? 'Creating...' : 'Create Account'}
                                         <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                                     </button>
                                 </form>
@@ -362,7 +362,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                                 className="text-[10px] font-black text-white hover:text-cyan-500 uppercase tracking-widest flex items-center gap-2 mx-auto"
                             >
                                 <ArrowRight size={14} className="rotate-180" />
-                                RETURN_TO_GUEST_ACCESS
+                                BACK_TO_GUEST_ENTRY
                             </button>
                         </div>
                     </div>
