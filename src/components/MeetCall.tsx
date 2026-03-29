@@ -415,7 +415,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     setIsCameraOff(true);
                 } else {
                     stream = await navigator.mediaDevices.getUserMedia({
-                        video: reqCam ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+                        video: reqCam ? { 
+                            width: { ideal: 640 }, 
+                            height: { ideal: 360 },
+                            frameRate: { max: 24 }
+                        } : false,
                         audio: reqMic
                     });
                     setIsMuted(!reqMic);
@@ -451,6 +455,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                         { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun3.l.google.com:19302' },
                         { urls: 'stun:stun4.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' },
                         // TURN Server for Mobile/NAT Traversal (REQUIRED for cross-network calls)
                         // {
                         //     urls: 'turn:your-turn-server.com:3478',
