@@ -69,6 +69,127 @@ interface VideoTileProps {
     isEnhanced?: boolean;
 }
 
+// --- Helper Components (Hoisted to avoid TDZ) ---
+
+function PermissionToggle({ icon, label, desc, active, onClick, title }: PermissionToggleProps & { title?: string }) {
+    return (
+        <div onClick={onClick} title={title} className={`p-4 border transition-all cursor-pointer flex items-center justify-between rounded-sm ${active ? 'bg-cyan-500/5 border-cyan-500/30 shadow-[0_0_20px_rgba(0,229,255,0.05)]' : 'bg-black border-white/5 opacity-40 hover:opacity-100'}`}>
+            <div className="flex items-center gap-4">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${active ? 'bg-cyan-500 text-black' : 'bg-zinc-900 text-zinc-700'}`}>{icon}</div>
+                <div>
+                    <div className={`text-[9px] font-black uppercase tracking-widest ${active ? 'text-white' : 'text-zinc-600'}`}>{label}</div>
+                    <div className="text-[7px] text-zinc-800 uppercase font-bold mt-0.5">{desc}</div>
+                </div>
+            </div>
+            {active ? <ToggleRight className="text-cyan-500" size={20} /> : <ToggleLeft className="text-zinc-800" size={20} />}
+        </div>
+    );
+}
+
+function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact }: VideoTileProps) {
+    const internalVideoRef = useRef<HTMLVideoElement>(null);
+    const videoRef = externalVideoRef || internalVideoRef;
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !stream) return;
+        
+        const attemptPlay = async () => {
+            try {
+                if (video.srcObject !== stream) video.srcObject = stream;
+                await video.play();
+            } catch (e) {
+                console.warn('Mobile Autoplay Blocked - Waiting for interaction:', e);
+            }
+        };
+        
+        attemptPlay();
+
+        let audioCtx: AudioContext | null = null;
+        if (!isMuted && !isLocal && stream.getAudioTracks().length > 0) {
+            try {
+                audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                audioCtxRef.current = audioCtx;
+                const source = audioCtx.createMediaStreamSource(stream);
+                const gainNode = audioCtx.createGain();
+                gainNodeRef.current = gainNode;
+                gainNode.gain.value = (window as any).GHOST_SPEAKER_BOOST || 1.0;
+                source.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                video.muted = true;
+            } catch (e) {
+                console.error("Audio Boost Failed:", e);
+            }
+        }
+        return () => { if (audioCtx) audioCtx.close().catch(() => { }); };
+    }, [stream, isMuted, isLocal]);
+
+    const handleManualPlay = () => {
+        const video = videoRef.current;
+        if (video) video.play().catch(() => {});
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+            audioCtxRef.current.resume();
+        }
+    };
+
+    useEffect(() => {
+        if (gainNodeRef.current && audioCtxRef.current) {
+            gainNodeRef.current.gain.setTargetAtTime((window as any).GHOST_SPEAKER_BOOST || 1.0, audioCtxRef.current.currentTime, 0.1);
+        }
+    }, [stream]);
+
+    return (
+        <div 
+            onClick={handleManualPlay}
+            className="relative w-full aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
+        >
+            <video ref={videoRef} autoPlay playsInline muted={isLocal || isMuted} style={{ filter: isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none' }} className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} />
+            
+            {!isLocal && !isCameraOff && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 pointer-events-none">
+                     <div className="bg-cyan-500/20 backdrop-blur-sm border border-cyan-500/40 p-2 rounded-full">
+                        <MonitorUp size={16} className="text-cyan-400" />
+                     </div>
+                     <span className="text-[7px] font-black text-cyan-400 uppercase tracking-widest mt-2">Tap to Sync Media</span>
+                </div>
+            )}
+
+            {isCameraOff && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-black/60 backdrop-blur-md">
+                    <div className="w-20 h-20 rounded-full border border-white/5 flex items-center justify-center bg-black/40"><EyeOff size={32} className="text-zinc-900" /></div>
+                    <span className="text-[9px] font-black text-zinc-700 uppercase tracking-[0.5em]">SIGNAL_MASKED</span>
+                </div>
+            )}
+            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
+                <div className="px-4 py-2 bg-black/80 border border-white/10 flex items-center gap-3 rounded-sm">
+                    <div className={`w-2 h-2 rounded-full ${role === 'origin' ? 'bg-cyan-500' : 'bg-green-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">{codename} {role === 'origin' && <span className="ml-2 text-cyan-600 font-mono">[HOST]</span>}</span>
+                    {!isLocal && onAddContact && (
+                        <button onClick={(e) => { e.stopPropagation(); onAddContact(); }} title="Add to Contacts" className="ml-2 text-zinc-500 hover:text-cyan-500 transition-colors pointer-events-auto">
+                            <UserPlus size={12} />
+                        </button>
+                    )}
+                </div>
+                {isScreen && <div className="px-3 py-1 bg-cyan-500 text-black text-[8px] font-black uppercase tracking-widest rounded-sm">SCREEN_SHARING</div>}
+            </div>
+            <div className="absolute inset-0 pointer-events-none opacity-5 mesh-grid" />
+        </div>
+    );
+}
+
+function ControlBtn({ icon, active, onClick, disabled, title, className, sizeOverride }: ControlBtnProps & { title?: string, className?: string, sizeOverride?: number }) {
+    const isMobile = window.innerWidth < 768;
+    const size = sizeOverride || (isMobile ? 16 : 24);
+    
+    return (
+        <button onClick={onClick} disabled={disabled} title={title} className={`w-10 h-10 md:w-14 md:h-14 flex items-center justify-center rounded-sm transition-all border ${disabled ? 'opacity-10 cursor-not-allowed grayscale' : active ? 'bg-[var(--accent)] text-black border-[var(--accent)] shadow-[0_0_20px_rgba(0,229,255,0.4)]' : 'text-[var(--text)] border-transparent hover:bg-[var(--btn-bg)] hover:border-[var(--border)]'} ${className}`}>
+            {React.cloneElement(icon as React.ReactElement<any>, { size })}
+        </button>
+    );
+}
+
 const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, isHost = false }) => {
     const [roomId] = useState(
         () => (externalRoomId || Math.random().toString(36).substring(2, 8)).toUpperCase().trim()
@@ -641,7 +762,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     </button>
 
                     <button onClick={endCall} aria-label="Leave Meeting" title="Leave Meeting" className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:text-white transition-all bg-white/[0.02] border border-white/5 hover:border-red-500/50">
-                        <X size={20} md:size={24} />
+                        <X size={20} />
                     </button>
                 </div>
             </header>
@@ -770,132 +891,6 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         </div>
     );
 };
-
-const PermissionToggle = ({ icon, label, desc, active, onClick, title }: PermissionToggleProps & { title?: string }) => (
-    <div onClick={onClick} title={title} className={`p-4 border transition-all cursor-pointer flex items-center justify-between rounded-sm ${active ? 'bg-cyan-500/5 border-cyan-500/30 shadow-[0_0_20px_rgba(0,229,255,0.05)]' : 'bg-black border-white/5 opacity-40 hover:opacity-100'}`}>
-        <div className="flex items-center gap-4">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${active ? 'bg-cyan-500 text-black' : 'bg-zinc-900 text-zinc-700'}`}>{icon}</div>
-            <div>
-                <div className={`text-[9px] font-black uppercase tracking-widest ${active ? 'text-white' : 'text-zinc-600'}`}>{label}</div>
-                <div className="text-[7px] text-zinc-800 uppercase font-bold mt-0.5">{desc}</div>
-            </div>
-        </div>
-        {active ? <ToggleRight className="text-cyan-500" size={20} /> : <ToggleLeft className="text-zinc-800" size={20} />}
-    </div>
-);
-
-interface VideoTileProps {
-    stream: MediaStream | null;
-    isMuted?: boolean;
-    isCameraOff?: boolean;
-    isLocal?: boolean;
-    isScreen?: boolean;
-    videoRef?: React.RefObject<HTMLVideoElement | null>;
-    role: NodeRole;
-    codename: string;
-    isEnhanced?: boolean;
-    onAddContact?: () => void;
-}
-
-const VideoTile = ({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact }: VideoTileProps) => {
-    const internalVideoRef = useRef<HTMLVideoElement>(null);
-    const videoRef = externalVideoRef || internalVideoRef;
-    const audioCtxRef = useRef<AudioContext | null>(null);
-    const gainNodeRef = useRef<GainNode | null>(null);
-
-    useEffect(() => {
-        const video = videoRef.current;
-        if (!video || !stream) return;
-        
-        const attemptPlay = async () => {
-            try {
-                if (video.srcObject !== stream) video.srcObject = stream;
-                await video.play();
-            } catch (e) {
-                console.warn('Mobile Autoplay Blocked - Waiting for interaction:', e);
-            }
-        };
-        
-        attemptPlay();
-
-        let audioCtx: AudioContext | null = null;
-        if (!isMuted && !isLocal && stream.getAudioTracks().length > 0) {
-            try {
-                audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                audioCtxRef.current = audioCtx;
-                const source = audioCtx.createMediaStreamSource(stream);
-                const gainNode = audioCtx.createGain();
-                gainNodeRef.current = gainNode;
-                gainNode.gain.value = (window as any).GHOST_SPEAKER_BOOST || 1.0;
-                source.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                video.muted = true;
-            } catch (e) {
-                console.error("Audio Boost Failed:", e);
-            }
-        }
-        return () => { if (audioCtx) audioCtx.close().catch(() => { }); };
-    }, [stream, isMuted, isLocal]);
-
-    const handleManualPlay = () => {
-        const video = videoRef.current;
-        if (video) video.play().catch(() => {});
-        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-            audioCtxRef.current.resume();
-        }
-    };
-
-    useEffect(() => {
-        if (gainNodeRef.current && audioCtxRef.current) {
-            gainNodeRef.current.gain.setTargetAtTime((window as any).GHOST_SPEAKER_BOOST || 1.0, audioCtxRef.current.currentTime, 0.1);
-        }
-    }, [stream]);
-
-    return (
-        <div 
-            onClick={handleManualPlay}
-            className="relative w-full aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
-        >
-            <video ref={videoRef} autoPlay playsInline muted={isLocal || isMuted} style={{ filter: isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none' }} className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} />
-            
-            {/* Mobile Recovery Prompt */}
-            {!isLocal && !isCameraOff && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 pointer-events-none">
-                     <div className="bg-cyan-500/20 backdrop-blur-sm border border-cyan-500/40 p-2 rounded-full">
-                        <MonitorUp size={16} className="text-cyan-400" />
-                     </div>
-                     <span className="text-[7px] font-black text-cyan-400 uppercase tracking-widest mt-2">Tap to Sync Media</span>
-                </div>
-            )}
-
-            {isCameraOff && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-black/60 backdrop-blur-md">
-                    <div className="w-20 h-20 rounded-full border border-white/5 flex items-center justify-center bg-black/40"><EyeOff size={32} className="text-zinc-900" /></div>
-                    <span className="text-[9px] font-black text-zinc-700 uppercase tracking-[0.5em]">SIGNAL_MASKED</span>
-                </div>
-            )}
-            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
-                <div className="px-4 py-2 bg-black/80 border border-white/10 flex items-center gap-3 rounded-sm">
-                    <div className={`w-2 h-2 rounded-full ${role === 'origin' ? 'bg-cyan-500' : 'bg-green-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">{codename} {role === 'origin' && <span className="ml-2 text-cyan-600 font-mono">[HOST]</span>}</span>
-                    {!isLocal && onAddContact && (
-                        <button onClick={(e) => { e.stopPropagation(); onAddContact(); }} title="Add to Contacts" className="ml-2 text-zinc-500 hover:text-cyan-500 transition-colors pointer-events-auto">
-                            <UserPlus size={12} />
-                        </button>
-                    )}
-                </div>
-                {isScreen && <div className="px-3 py-1 bg-cyan-500 text-black text-[8px] font-black uppercase tracking-widest rounded-sm">SCREEN_SHARING</div>}
-            </div>
-            <div className="absolute inset-0 pointer-events-none opacity-5 mesh-grid" />
-        </div>
-    );
-};
-
-const ControlBtn = ({ icon, active, onClick, disabled, title, className }: ControlBtnProps & { title?: string, className?: string }) => (
-    <button onClick={onClick} disabled={disabled} title={title} className={`w-10 h-10 md:w-14 md:h-14 flex items-center justify-center rounded-sm transition-all border ${disabled ? 'opacity-10 cursor-not-allowed grayscale' : active ? 'bg-[var(--accent)] text-black border-[var(--accent)] shadow-[0_0_20px_rgba(0,229,255,0.4)]' : 'text-[var(--text)] border-transparent hover:bg-[var(--btn-bg)] hover:border-[var(--border)]'} ${className}`}>
-        {React.cloneElement(icon as React.ReactElement<any>, { size: window.innerWidth < 768 ? 16 : 24 })}
-    </button>
-);
 
 interface ControlBtnProps { icon: React.ReactNode; active?: boolean; onClick: () => void; disabled?: boolean; }
 
