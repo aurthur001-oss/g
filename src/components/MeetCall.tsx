@@ -108,13 +108,22 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
         
         const attemptPlay = async () => {
             try {
-                if (video.srcObject !== stream) video.srcObject = stream;
-                await video.play();
+                if (!video.srcObject || video.srcObject !== stream) {
+                    video.srcObject = stream;
+                }
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(() => {
+                        console.warn('Wait for interaction to play');
+                        setIsPlaying(false);
+                    });
+                }
             } catch (e) {
-                console.warn('Mobile Autoplay Blocked - Waiting for interaction:', e);
+                console.warn('Playback error:', e);
             }
         };
-        
+
+        video.onloadedmetadata = () => attemptPlay();
         attemptPlay();
 
         let audioCtx: AudioContext | null = null;
@@ -466,7 +475,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 host: '0.peerjs.com',
                 port: 443,
                 secure: true,
-                debug: 1,
+                debug: 3,
                 config: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
@@ -516,8 +525,10 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 const streamToSend =
                     isScreenSharing && screenStreamRef.current
                         ? screenStreamRef.current
-                        : localStreamRef.current!;
-                call.answer(streamToSend);
+                        : localStreamRef.current;
+                
+                // CRITICAL: Always answer with a stream object, even if empty, to establish the bridge
+                call.answer(streamToSend || new MediaStream());
                 call.on('stream', (remoteStream) => {
                     handleRemoteStream(call.peer, remoteStream);
                 });
@@ -577,18 +588,25 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 setIsAdmitted(true);
                 conn.send({ type: 'LOBBY_ADMIT_ACK' });
                 addSystemMessage('THE HOST HAS ADMITTED YOU TO THE MEETING');
+                
+                // PARTICIPANT SIDE: Also initiate a call to the host after a short delay
+                // for bi-directional reliability.
+                setTimeout(() => {
+                    const hostId = `GHOST-CONF-${roomId}-HOST`;
+                    connectToPeer(hostId);
+                }, 4000);
             } else if (data.type === 'LOBBY_ADMIT_ACK') {
-                // Small delay to ensure participant is ready
+                // Ensure participant hardware is ready before the media offer arrives
                 setTimeout(() => {
                     const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-                    const call = peerRef.current!.call(conn.peer, streamToSend!);
+                    const call = peerRef.current!.call(conn.peer, streamToSend || new MediaStream());
                     if (call) {
                         call.on('stream', (remoteStream) => handleRemoteStream(conn.peer, remoteStream));
                         call.on('close', () => removePeer(conn.peer));
                         callsRef.current.set(conn.peer, call);
                     }
-                    addSystemMessage(`MEDIA_HANDSHAKE_INITIATED: ${conn.peer}`);
-                }, 1500);
+                    addSystemMessage(`MEDIA_HANDSHAKE_INITIATED: RELAYING STREAM TO ${conn.peer}`);
+                }, 2000);
             } else if (data.type === 'PEER_DISCOVERY') {
                 // Staggered discovery to prevent signaling storm
                 const delay = Math.floor(Math.random() * 1500);
