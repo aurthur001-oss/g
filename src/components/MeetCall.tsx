@@ -27,7 +27,8 @@ import {
     Sun,
     Moon,
     Smile,
-    Activity
+    Activity,
+    Users
 } from 'lucide-react';
 import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
@@ -285,6 +286,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const dataConnsRef = useRef<Map<string, DataConnection>>(new Map());
     const chatEndRef = useRef<HTMLDivElement>(null);
     const admittedPeersRef = useRef<Set<string>>(new Set());
+    const lastSyncRef = useRef<number>(Date.now());
 
     useEffect(() => {
         if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -334,6 +336,27 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         
         return () => clearInterval(pulse);
     }, [isHost, isAdmitted, roomId, myCodename, hasMediaAccess]);
+
+    // 0.5 Media Recovery Heartbeat (Audit every 30s)
+    useEffect(() => {
+        if (!hasMediaAccess) return;
+        
+        const heartbeat = setInterval(() => {
+            const now = Date.now();
+            if (now - lastSyncRef.current < 25000) return; // Prevent overlapping
+            
+            remotePeers.forEach(peer => {
+                const tracks = peer.stream?.getTracks() || [];
+                if (tracks.length === 0 && peer.role !== 'shadow') {
+                    console.warn(`[RECOVERY] Dead stream detected for ${peer.peerId}. Re-syncing...`);
+                    connectToPeer(peer.peerId);
+                }
+            });
+            lastSyncRef.current = now;
+        }, 30000);
+        
+        return () => clearInterval(heartbeat);
+    }, [remotePeers, hasMediaAccess]);
 
     useEffect(() => {
         const handleUnload = async () => {
@@ -677,7 +700,9 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
         // Collision Prevention: Only the peer with the lexicographically higher ID initiates the call
         // EXCEPT the host, who always calls proactively to ensure connectivity.
-        if (myRole !== 'origin' && peerRef.current.id < targetId) {
+        // EXCEPT when calling the host who always expects bi-directional lock.
+        const isTargetHost = targetId.endsWith('-HOST');
+        if (!isTargetHost && myRole !== 'origin' && peerRef.current.id < targetId) {
             console.log(`[SIGNALING] Passive discovery for ${targetId} (waiting for incoming call)`);
             return;
         }
@@ -749,6 +774,16 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         
         setRemotePeers((prev) => {
             const exists = prev.find((p) => p.peerId === peerId);
+            
+            // ATOMIC TRACK VERIFICATION
+            if (stream && stream.getTracks().length === 0) {
+                console.log(`[MEDIA] Awaiting tracks for ${peerId}...`);
+                stream.onaddtrack = () => {
+                    console.log(`[MEDIA] Track arrived for ${peerId}`);
+                    handleRemoteStream(peerId, stream);
+                };
+            }
+
             if (exists) {
                 return prev.map((p) => p.peerId === peerId ? { ...p, stream } : p);
             }
@@ -972,20 +1007,25 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     </button>
 
                     {/* Lobby Controls for Host */}
-                    {isHost && lobbyPeers.length > 0 && (
-                        <div className="flex items-center gap-2 bg-cyan-500/5 border border-cyan-500/20 px-4 py-1.5 rounded-sm animate-pulse">
-                            <span className="text-[8px] font-black text-cyan-500 uppercase tracking-widest">{lobbyPeers.length} WAITING</span>
-                            <div className="flex -space-x-1">
-                                {lobbyPeers.map(p => (
-                                    <button 
-                                        key={p.peerId}
-                                        onClick={() => admitPeer(p.peerId)}
-                                        className="h-6 px-3 bg-cyan-500 text-black text-[7px] font-black uppercase tracking-tighter hover:bg-white transition-all shadow-[0_0_10px_rgba(0,255,255,0.2)]"
-                                    >
-                                        ADMIT {p.codename.split('-')[0]}
-                                    </button>
-                                ))}
-                            </div>
+                    {isHost && (
+                        <div className={`flex items-center gap-2 border px-4 py-1.5 rounded-sm transition-all ${lobbyPeers.length > 0 ? 'bg-cyan-500/10 border-cyan-500/30 animate-pulse' : 'bg-white/[0.02] border-white/5 opacity-40 hover:opacity-100'}`}>
+                            <Users size={14} className={lobbyPeers.length > 0 ? 'text-cyan-500' : 'text-zinc-500'} />
+                            <span className={`text-[8px] font-black uppercase tracking-widest ${lobbyPeers.length > 0 ? 'text-cyan-500' : 'text-zinc-600'}`}>
+                                {lobbyPeers.length > 0 ? `${lobbyPeers.length} WAITING` : 'LOBBY EMPTY'}
+                            </span>
+                            {lobbyPeers.length > 0 && (
+                                <div className="flex -space-x-1 ml-2">
+                                    {lobbyPeers.map(p => (
+                                        <button 
+                                            key={p.peerId}
+                                            onClick={() => admitPeer(p.peerId)}
+                                            className="h-6 px-3 bg-cyan-500 text-black text-[7px] font-black uppercase tracking-tighter hover:bg-white transition-all shadow-[0_0_10px_rgba(0,255,255,0.2)]"
+                                        >
+                                            ADMIT {p.codename.split('-')[0]}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
