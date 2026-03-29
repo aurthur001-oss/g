@@ -25,7 +25,8 @@ import {
     UserMinus,
     Sun,
     Moon,
-    Smile
+    Smile,
+    Activity
 } from 'lucide-react';
 import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
@@ -74,6 +75,7 @@ interface VideoTileProps {
     isEnhanced?: boolean;
     onAddContact?: () => void;
     onKick?: () => void;
+    onRefresh?: () => void;
 }
 
 // --- Helper Components (Hoisted to avoid TDZ) ---
@@ -93,7 +95,7 @@ function PermissionToggle({ icon, label, desc, active, onClick, title }: Permiss
     );
 }
 
-function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact, onKick, isLowLight }: VideoTileProps & { isLowLight?: boolean }) {
+function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact, onKick, onRefresh, isLowLight }: VideoTileProps & { isLowLight?: boolean }) {
     const internalVideoRef = useRef<HTMLVideoElement>(null);
     const videoRef = externalVideoRef || internalVideoRef;
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -190,6 +192,11 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
                     {!isLocal && onKick && (
                         <button onClick={(e) => { e.stopPropagation(); onKick(); }} title="Remove from Meeting" className="ml-2 text-zinc-500 hover:text-red-500 transition-colors pointer-events-auto">
                             <UserMinus size={12} />
+                        </button>
+                    )}
+                    {!isLocal && onRefresh && (
+                        <button onClick={(e) => { e.stopPropagation(); onRefresh(); }} title="Refresh Signal" className="ml-2 text-zinc-500 hover:text-green-500 transition-colors pointer-events-auto">
+                            <Activity size={12} />
                         </button>
                     )}
                 </div>
@@ -571,15 +578,17 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 conn.send({ type: 'LOBBY_ADMIT_ACK' });
                 addSystemMessage('THE HOST HAS ADMITTED YOU TO THE MEETING');
             } else if (data.type === 'LOBBY_ADMIT_ACK') {
-                // Now that the participant is ready, trigger the media call
-                const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-                const call = peerRef.current!.call(conn.peer, streamToSend!);
-                if (call) {
-                    call.on('stream', (remoteStream) => handleRemoteStream(conn.peer, remoteStream));
-                    call.on('close', () => removePeer(conn.peer));
-                    callsRef.current.set(conn.peer, call);
-                }
-                addSystemMessage(`MEDIA_HANDSHAKE_INITIATED: ${conn.peer}`);
+                // Small delay to ensure participant is ready
+                setTimeout(() => {
+                    const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                    const call = peerRef.current!.call(conn.peer, streamToSend!);
+                    if (call) {
+                        call.on('stream', (remoteStream) => handleRemoteStream(conn.peer, remoteStream));
+                        call.on('close', () => removePeer(conn.peer));
+                        callsRef.current.set(conn.peer, call);
+                    }
+                    addSystemMessage(`MEDIA_HANDSHAKE_INITIATED: ${conn.peer}`);
+                }, 1500);
             } else if (data.type === 'PEER_DISCOVERY') {
                 // Staggered discovery to prevent signaling storm
                 const delay = Math.floor(Math.random() * 1500);
@@ -978,6 +987,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                                         isEnhanced={isEnhanced} 
                                         onAddContact={() => addToContacts(peer.peerId, peer.codename)} 
                                         onKick={isHost ? () => kickPeer(peer.peerId) : undefined}
+                                        onRefresh={() => connectToPeer(peer.peerId)}
                                         isLowLight={isLowLight} 
                                     />
                                 ))}
