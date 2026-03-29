@@ -733,11 +733,14 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     };
 
     const copyInvite = () => {
-        const baseUrl = `${window.location.origin}${window.location.pathname}`;
-        const encodedRoom = encodeURIComponent(externalRoomId || roomId);
-        const encodedHost = encodeURIComponent(userName);
-        const url = `${baseUrl}?room=${encodedRoom}&host=${encodedHost}`;
-        navigator.clipboard.writeText(url);
+        const url = new URL(window.location.origin + window.location.pathname);
+        url.searchParams.set('room', roomId);
+        url.searchParams.set('host', userName || 'Member');
+        if (inviteRole === 'shadow') {
+            url.searchParams.set('role', 'shadow');
+        }
+        
+        navigator.clipboard.writeText(url.toString());
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
