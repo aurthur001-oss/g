@@ -248,6 +248,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const [unreadCount, setUnreadCount] = useState(0);
     const [isLowLight, setIsLowLight] = useState(false);
     const [showEmojis, setShowEmojis] = useState(false);
+    const [lobbyPeers, setLobbyPeers] = useState<{peerId: string, codename: string}[]>([]);
+    const [isAdmitted, setIsAdmitted] = useState(isHost);
     const EMOJIS = ['👻', '✨', '💎', '🔥', '🚀', '🔒', '🦾', '🎯', '⚡', '🛸'];
 
     const peerRef = useRef<Peer | null>(null);
@@ -458,12 +460,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                         { urls: 'stun:stun3.l.google.com:19302' },
                         { urls: 'stun:stun4.l.google.com:19302' },
                         { urls: 'stun:global.stun.twilio.com:3478' },
-                        // TURN Server for Mobile/NAT Traversal (REQUIRED for cross-network calls)
-                        // {
-                        //     urls: 'turn:your-turn-server.com:3478',
-                        //     username: 'your-username',
-                        //     credential: 'your-password'
-                        // }
+                        {
+                            urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443'],
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject'
+                        }
                     ]
                 }
             });
@@ -491,6 +492,9 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             peer.on('connection', (conn) => setupDataConnection(conn));
 
             peer.on('call', (call) => {
+                // Security: Only answer if we are admitted or we are the host
+                if (!isAdmitted && !isHost) return;
+
                 const streamToSend =
                     isScreenSharing && screenStreamRef.current
                         ? screenStreamRef.current
@@ -522,6 +526,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             dataConnsRef.current.set(conn.peer, conn);
             conn.send({ type: 'META_SYNC', codename: myCodename, role: myRole });
             
+            // If we are a participant and not admitted yet, request entry
+            if (!isHost && !isAdmitted) {
+                conn.send({ type: 'LOBBY_REQUEST', codename: myCodename });
+            }
+            
             // Host discovery: If I am the host and someone joins, tell everyone else to connect to them
             if (myRole === 'origin') {
                 dataConnsRef.current.forEach((otherConn, otherPeerId) => {
@@ -540,6 +549,15 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             } else if (data.type === 'META_SYNC') {
                 updatePeerCodename(conn.peer, data.codename, data.role);
                 addSystemMessage(`${data.codename.toUpperCase()} ENTERED THE MEETING`);
+            } else if (data.type === 'LOBBY_REQUEST') {
+                setLobbyPeers((prev) => {
+                    if (prev.find(p => p.peerId === conn.peer)) return prev;
+                    return [...prev, { peerId: conn.peer, codename: data.codename }];
+                });
+                addSystemMessage(`LOBBY: ${data.codename.toUpperCase()} IS WAITING TO JOIN`);
+            } else if (data.type === 'LOBBY_ADMIT') {
+                setIsAdmitted(true);
+                addSystemMessage('THE HOST HAS ADMITTED YOU TO THE MEETING');
             } else if (data.type === 'PEER_DISCOVERY') {
                 // Staggered discovery to prevent signaling storm
                 const delay = Math.floor(Math.random() * 1500);
@@ -571,7 +589,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         if (callsRef.current.has(targetId) || targetId === peerRef.current.id) return;
 
         // Collision Prevention: Only the peer with the lexicographically higher ID initiates the call
-        if (peerRef.current.id < targetId) {
+        // EXCEPT the host, who always calls proactively to ensure connectivity.
+        if (myRole !== 'origin' && peerRef.current.id < targetId) {
             console.log(`[SIGNALING] Passive discovery for ${targetId} (waiting for incoming call)`);
             return;
         }
@@ -583,21 +602,26 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             try {
                 const conn = peerRef.current!.connect(targetId, { reliable: true });
                 setupDataConnection(conn);
-                const streamToSend =
-                    isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-                const call = peerRef.current!.call(targetId, streamToSend!);
                 
-                if (call) {
-                    call.on('stream', (remoteStream) => {
-                        handleRemoteStream(targetId, remoteStream);
-                    });
+                // Participants only call others if they are already admitted
+                // Host only calls via the 'Admit' button logic
+                if (!isHost && isAdmitted) {
+                    const streamToSend =
+                        isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                    const call = peerRef.current!.call(targetId, streamToSend!);
                     
-                    call.on('error', (err) => {
-                        console.error(`Peer ${targetId} handshake failed:`, err);
-                        if (retryCount < 2) setTimeout(() => connectToPeer(targetId, retryCount + 1), 3000);
-                    });
-                    call.on('close', () => removePeer(targetId));
-                    callsRef.current.set(targetId, call);
+                    if (call) {
+                        call.on('stream', (remoteStream) => {
+                            handleRemoteStream(targetId, remoteStream);
+                        });
+                        
+                        call.on('error', (err) => {
+                            console.error(`Peer ${targetId} handshake failed:`, err);
+                            if (retryCount < 2) setTimeout(() => connectToPeer(targetId, retryCount + 1), 3000);
+                        });
+                        call.on('close', () => removePeer(targetId));
+                        callsRef.current.set(targetId, call);
+                    }
                 }
             } catch (err) {
                 console.error(`Target ${targetId} unreachable:`, err);
@@ -747,6 +771,23 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const admitPeer = (peerId: string) => {
+        const conn = dataConnsRef.current.get(peerId);
+        if (conn) {
+            conn.send({ type: 'LOBBY_ADMIT' });
+            // Post-admission call
+            const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+            const call = peerRef.current!.call(peerId, streamToSend!);
+            if (call) {
+                call.on('stream', (remoteStream) => handleRemoteStream(peerId, remoteStream));
+                call.on('close', () => removePeer(peerId));
+                callsRef.current.set(peerId, call);
+            }
+            setLobbyPeers((prev) => prev.filter(p => p.peerId !== peerId));
+            addSystemMessage(`ADMITTED USER TO THE MEETING`);
+        }
+    };
+
     const addToContacts = (peerId: string, name: string) => {
         const saved = localStorage.getItem('ghost_contacts');
         const contacts = saved ? JSON.parse(saved) : [];
@@ -824,6 +865,24 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                         <span className="hidden md:inline">{copied ? 'LINK COPIED' : `INVITE LINK`}</span>
                     </button>
 
+                    {/* Lobby Controls for Host */}
+                    {isHost && lobbyPeers.length > 0 && (
+                        <div className="flex items-center gap-2 bg-cyan-500/5 border border-cyan-500/20 px-4 py-1.5 rounded-sm animate-pulse">
+                            <span className="text-[8px] font-black text-cyan-500 uppercase tracking-widest">{lobbyPeers.length} WAITING</span>
+                            <div className="flex -space-x-1">
+                                {lobbyPeers.map(p => (
+                                    <button 
+                                        key={p.peerId}
+                                        onClick={() => admitPeer(p.peerId)}
+                                        className="h-6 px-3 bg-cyan-500 text-black text-[7px] font-black uppercase tracking-tighter hover:bg-white transition-all shadow-[0_0_10px_rgba(0,255,255,0.2)]"
+                                    >
+                                        ADMIT {p.codename.split('-')[0]}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <button onClick={endCall} aria-label="Leave Meeting" title="Leave Meeting" className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:text-white transition-all bg-white/[0.02] border border-white/5 hover:border-red-500/50">
                         <X size={20} />
                     </button>
@@ -855,6 +914,23 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                                 <button onClick={initNode} disabled={isConnecting} className="py-4 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cyan-400 transition-all shadow-[0_0_30px_rgba(0,229,255,0.2)] disabled:opacity-50">{isConnecting ? 'Initializing...' : 'Join Meeting'}</button>
                             </div>
                             <p className="mt-8 text-[7px] font-mono text-zinc-900 uppercase tracking-widest">SYSTEM: Peer signaling initiated on {localStorage.getItem('ghost_peer_host') || '0.peerjs.com'}.</p>
+                        </div>
+                    ) : !isAdmitted ? (
+                        <div className="w-full max-w-md bg-[#050505] border border-white/10 p-12 text-center shadow-2xl relative z-20">
+                             <div className="flex flex-col items-center gap-8">
+                                <div className="relative">
+                                    <div className="w-24 h-24 rounded-full border border-cyan-500/20 flex items-center justify-center animate-pulse">
+                                        <Loader2 size={40} className="text-cyan-500 animate-spin" />
+                                    </div>
+                                    <div className="absolute inset-0 bg-cyan-500/5 filter blur-2xl rounded-full" />
+                                </div>
+                                <div className="space-y-3">
+                                    <h3 className="text-2xl font-light uppercase tracking-[0.2em] text-white italic">Lobby Area</h3>
+                                    <p className="text-[10px] font-black text-cyan-500/60 uppercase tracking-[0.4em] animate-pulse">Waiting for Admission...</p>
+                                </div>
+                                <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                <p className="text-[8px] font-mono text-zinc-600 uppercase leading-relaxed max-w-[240px]">The host has been notified of your request. You will be automatically moved to the meeting once admitted.</p>
+                             </div>
                         </div>
                     ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center relative">
