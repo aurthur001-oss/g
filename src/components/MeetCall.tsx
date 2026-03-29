@@ -71,7 +71,7 @@ interface VideoTileProps {
 
 const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, isHost = false }) => {
     const [roomId] = useState(
-        () => externalRoomId || Math.random().toString(36).substring(2, 8).toUpperCase()
+        () => (externalRoomId || Math.random().toString(36).substring(2, 8)).toUpperCase().trim()
     );
     const [myCodename] = useState(
         () => userName || CODENAMES[Math.floor(Math.random() * CODENAMES.length)].toUpperCase() + '-' + Math.floor(Math.random() * 900 + 100)
@@ -165,7 +165,10 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         initNode();
         
         let signalChannel: any = null;
+        let pulseInterval: any = null;
+
         if (isCloudBackupActive()) {
+            // 1. Discovery Channel
             signalChannel = (supabase as any)
                 .channel(`signaling-${roomId}`)
                 .on('postgres_changes', { 
@@ -181,6 +184,21 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     }
                 })
                 .subscribe();
+
+            // 2. Active Meeting Registry (Host Only)
+            if (isHost || myRole === 'origin') {
+                const registerMeeting = async () => {
+                    await (supabase as any).from('active_meetings').upsert({
+                        room_id: roomId,
+                        host_name: userName || myCodename,
+                        is_public: true,
+                        last_pulse: new Date().toISOString()
+                    });
+                };
+                
+                registerMeeting();
+                pulseInterval = setInterval(registerMeeting, 30000); // 30s pulse
+            }
         }
 
         return () => {
@@ -188,6 +206,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             screenStreamRef.current?.getTracks().forEach((t) => t.stop());
             peerRef.current?.destroy();
             if (signalChannel) (supabase as any).removeChannel(signalChannel);
+            if (pulseInterval) clearInterval(pulseInterval);
+            
+            // Cleanup registry on exit if host
+            if ((isHost || myRole === 'origin') && isCloudBackupActive()) {
+                (supabase as any).from('active_meetings').delete().eq('room_id', roomId);
+            }
         };
     }, [reqMic, reqCam]);
 
@@ -549,7 +573,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     };
 
     return (
-        <div className={`fixed inset-0 z-[200] bg-black flex flex-col font-sans select-none overflow-hidden animate-in fade-in duration-500 ${ghostMode ? 'chromatic' : ''}`}>
+        <div className={`fixed inset-0 z-[200] bg-black flex flex-col font-sans select-none overflow-hidden ${ghostMode ? 'chromatic' : ''}`}>
             <header className="h-14 md:h-16 px-4 md:px-8 flex items-center justify-between border-b border-white/[0.03] bg-black/80 backdrop-blur-2xl shrink-0 z-50">
                 <div className="flex items-center gap-3 md:gap-5">
                     <Logo size={24} className="text-cyan-500 mt-1" animate={hasMediaAccess} />

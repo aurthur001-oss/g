@@ -335,8 +335,20 @@ CREATE TABLE IF NOT EXISTS meeting_signaling (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- 4. Enable Realtime for signaling (CRITICAL for cross-device calls)
+-- 4. Create Active Meetings Registry (STABLE LINKS)
+CREATE TABLE IF NOT EXISTS active_meetings (
+    room_id TEXT PRIMARY KEY,
+    host_name TEXT NOT NULL,
+    participants_count INTEGER DEFAULT 0,
+    is_public BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    last_pulse TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- 5. Enable Realtime for signaling AND meetings
+-- Note: This might error if already enabled, that is expected in this script
 ALTER PUBLICATION supabase_realtime ADD TABLE meeting_signaling;
+ALTER PUBLICATION supabase_realtime ADD TABLE active_meetings;
 `.trim();
                                         navigator.clipboard.writeText(sql);
                                         const projectUrl = (supabase as any).supabaseUrl;
