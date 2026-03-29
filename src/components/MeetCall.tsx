@@ -23,7 +23,8 @@ import {
     ToggleRight,
     UserPlus,
     Sun,
-    Moon
+    Moon,
+    Smile
 } from 'lucide-react';
 import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
