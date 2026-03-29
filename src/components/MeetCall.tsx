@@ -21,6 +21,7 @@ import {
     BookOpen,
     Shield,
     ToggleRight,
+    ToggleLeft,
     UserPlus,
     UserMinus,
     Sun,
@@ -316,9 +317,14 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     }, []);
 
     useEffect(() => {
-        const handleUnload = () => {
+        const handleUnload = async () => {
             localStreamRef.current?.getTracks().forEach((t) => t.stop());
             screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+            
+            if (isCloudBackupActive()) {
+                await (supabase as any).from('meeting_signaling').delete().eq('peer_id', peerRef.current?.id);
+            }
+            
             peerRef.current?.destroy();
         };
         window.addEventListener('beforeunload', handleUnload);
@@ -685,6 +691,29 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         }, delay);
     };
 
+    const removePeer = (peerId: string) => {
+        const peer = remotePeers.find((p) => p.peerId === peerId);
+        if (peer) addSystemMessage(`USER ${peer.codename} DISCONNECTED`);
+        
+        setRemotePeers((prev) => prev.filter((p) => p.peerId !== peerId));
+        
+        // Cleanup calls
+        const call = callsRef.current.get(peerId);
+        if (call) {
+            call.close();
+            callsRef.current.delete(peerId);
+        }
+        
+        // Cleanup connections
+        const conn = dataConnsRef.current.get(peerId);
+        if (conn) {
+            conn.close();
+            dataConnsRef.current.delete(peerId);
+        }
+        
+        console.log(`[SESSION] Removed peer: ${peerId}`);
+    };
+
     const handleRemoteStream = (peerId: string, stream: MediaStream) => {
         const parts = peerId.split('-');
         const role: NodeRole = peerId.includes('-shadow-') || peerId.includes('-SHADOW-') ? 'shadow' : peerId.includes('-HOST') ? 'origin' : 'node';
@@ -709,13 +738,6 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         });
     };
 
-    const removePeer = (peerId: string) => {
-        const peer = remotePeers.find((p) => p.peerId === peerId);
-        if (peer) addSystemMessage(`USER ${peer.codename} DISCONNECTED`);
-        setRemotePeers((prev) => prev.filter((p) => p.peerId !== peerId));
-        callsRef.current.delete(peerId);
-        dataConnsRef.current.delete(peerId);
-    };
 
     const toggleScreenShare = async () => {
         if (myRole === 'shadow') return;
