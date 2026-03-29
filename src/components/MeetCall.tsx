@@ -557,7 +557,18 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 addSystemMessage(`LOBBY: ${data.codename.toUpperCase()} IS WAITING TO JOIN`);
             } else if (data.type === 'LOBBY_ADMIT') {
                 setIsAdmitted(true);
+                conn.send({ type: 'LOBBY_ADMIT_ACK' });
                 addSystemMessage('THE HOST HAS ADMITTED YOU TO THE MEETING');
+            } else if (data.type === 'LOBBY_ADMIT_ACK') {
+                // Now that the participant is ready, trigger the media call
+                const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                const call = peerRef.current!.call(conn.peer, streamToSend!);
+                if (call) {
+                    call.on('stream', (remoteStream) => handleRemoteStream(conn.peer, remoteStream));
+                    call.on('close', () => removePeer(conn.peer));
+                    callsRef.current.set(conn.peer, call);
+                }
+                addSystemMessage(`MEDIA_HANDSHAKE_INITIATED: ${conn.peer}`);
             } else if (data.type === 'PEER_DISCOVERY') {
                 // Staggered discovery to prevent signaling storm
                 const delay = Math.floor(Math.random() * 1500);
@@ -775,16 +786,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         const conn = dataConnsRef.current.get(peerId);
         if (conn) {
             conn.send({ type: 'LOBBY_ADMIT' });
-            // Post-admission call
-            const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-            const call = peerRef.current!.call(peerId, streamToSend!);
-            if (call) {
-                call.on('stream', (remoteStream) => handleRemoteStream(peerId, remoteStream));
-                call.on('close', () => removePeer(peerId));
-                callsRef.current.set(peerId, call);
-            }
             setLobbyPeers((prev) => prev.filter(p => p.peerId !== peerId));
-            addSystemMessage(`ADMITTED USER TO THE MEETING`);
+            addSystemMessage(`ADMISSION SIGNAL SENT. WAITING FOR ACK...`);
         }
     };
 
