@@ -49,6 +49,7 @@ interface MeetCallProps {
     externalRoomId?: string | null;
     userName?: string;
     isHost?: boolean;
+    isGuest?: boolean;
 }
 
 interface PermissionToggleProps {
@@ -199,7 +200,7 @@ function ControlBtn({ icon, active, onClick, disabled, title, className, sizeOve
     );
 }
 
-const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, isHost = false }) => {
+const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, isHost = false, isGuest = false }) => {
     const [roomId] = useState(
         () => (externalRoomId || Math.random().toString(36).substring(2, 8)).toUpperCase().trim()
     );
@@ -243,6 +244,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const [chatInput, setChatInput] = useState('');
     const [unreadCount, setUnreadCount] = useState(0);
     const [isLowLight, setIsLowLight] = useState(false);
+    const [showEmojis, setShowEmojis] = useState(false);
+    const EMOJIS = ['👻', '✨', '💎', '🔥', '🚀', '🔒', '🦾', '🎯', '⚡', '🛸'];
 
     const peerRef = useRef<Peer | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
@@ -888,10 +891,27 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                             ))}
                             <div ref={chatEndRef} />
                         </div>
-                        <div className="p-4 border-t border-white/5">
-                            <div className="relative">
-                                <input className="w-full bg-[#050505] border border-white/10 py-3 pl-4 pr-10 text-[10px] text-white focus:outline-none focus:border-cyan-500/30 font-mono" placeholder="MSG_UPLINK..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} />
-                                <button onClick={sendMessage} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-700 hover:text-cyan-500"><Send size={14} /></button>
+                        <div className="p-4 border-t border-white/5 space-y-3 relative">
+                            {showEmojis && !isGuest && (
+                                <div className="absolute bottom-full left-0 right-0 p-3 bg-black border border-white/5 grid grid-cols-5 gap-2 animate-in slide-in-from-bottom-2 duration-300 z-50 shadow-2xl">
+                                    {EMOJIS.map(e => (
+                                        <button key={e} onClick={() => { setChatInput(prev => prev + e); setShowEmojis(false); }} className="text-xl hover:scale-125 transition-transform p-2 bg-white/[0.02] border border-white/5 hover:border-cyan-500/20">{e}</button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="relative flex gap-2">
+                                <input 
+                                    className="flex-1 bg-[#050505] border border-white/10 py-3 pl-4 pr-10 text-[10px] text-white focus:outline-none focus:border-cyan-500/30 font-mono italic" 
+                                    placeholder={isGuest ? "GUEST_READ_ONLY..." : "MSG_UPLINK..."} 
+                                    value={chatInput} 
+                                    onChange={(e) => setChatInput(e.target.value)} 
+                                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
+                                    disabled={isGuest}
+                                />
+                                {!isGuest && (
+                                    <button onClick={() => setShowEmojis(!showEmojis)} className={`w-10 h-10 flex items-center justify-center border border-white/5 hover:border-cyan-500/20 transition-all ${showEmojis ? 'bg-cyan-500 text-black' : 'text-zinc-600'}`}>👻</button>
+                                )}
+                                <button onClick={sendMessage} disabled={isGuest} className={`text-zinc-700 hover:text-cyan-500 transition-colors ${isGuest ? 'opacity-0 pointer-events-none' : ''}`}><Send size={14} /></button>
                             </div>
                         </div>
                     </aside>

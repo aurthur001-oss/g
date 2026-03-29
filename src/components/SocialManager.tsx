@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, User, MessageSquare, Trash2, X, Search, Activity, ShieldAlert, Check } from 'lucide-react';
+import { UserPlus, User, MessageSquare, Trash2, X, Search, Activity, ShieldAlert, Check, Zap, Target, Globe } from 'lucide-react';
 import { meshNodes, gun } from '../lib/gun';
 
 interface SocialManagerProps {
@@ -96,13 +96,13 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500/0 via-cyan-500/40 to-cyan-500/0" />
 
                 <header className="p-6 border-b border-white/5 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <UserPlus className="text-cyan-500" size={24} />
-                        <div>
-                            <h3 className="text-lg font-light uppercase tracking-tight text-white italic">Social Mesh</h3>
-                            <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-1 italic">Logged in as: {currentUser.username}</p>
+                        <div className="w-12 h-12 bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center rounded-sm shadow-[0_0_20px_rgba(0,229,255,0.1)]">
+                            <Zap className="text-cyan-500 animate-pulse" size={24} />
                         </div>
-                    </div>
+                        <div>
+                            <h3 className="text-xl font-light uppercase tracking-tight text-white italic">Neural Social Mesh</h3>
+                            <p className="text-[8px] font-black text-cyan-900 uppercase tracking-[0.3em] mt-1">Logged in as: {currentUser.username}</p>
+                        </div>
                     <button onClick={onClose} className="w-10 h-10 flex items-center justify-center text-zinc-700 hover:text-white transition-all"><X size={20} /></button>
                 </header>
 
@@ -128,9 +128,12 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                     </div>
 
                     {searchResult && (
-                        <div className="mt-4 p-6 bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-[0_0_30px_rgba(0,229,255,0.1)]">
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-sm bg-cyan-500 flex items-center justify-center text-black font-black text-[12px] shadow-[0_0_15px_rgba(0,229,255,0.4)]">{searchResult.username.slice(0, 1)}</div>
+                         <div className="mt-4 p-6 bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-[0_0_30px_rgba(0,229,255,0.1)] group/result relative overflow-hidden">
+                            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-transparent opacity-0 group-hover/result:opacity-100 transition-opacity" />
+                            <div className="flex items-center gap-4 relative z-10">
+                                <div className="w-12 h-12 rounded-sm bg-cyan-500 flex items-center justify-center text-black shadow-[0_0_25px_rgba(0,229,255,0.5)]">
+                                    <Target size={24} className="animate-spin-slow" />
+                                </div>
                                 <div>
                                     <span className="block text-[12px] font-black text-white tracking-widest">{searchResult.username}</span>
                                     <span className="block text-[8px] text-cyan-500 uppercase font-black">{searchResult.name}</span>
@@ -160,8 +163,8 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                         friends.map(friend => (
                             <div key={friend.username} className="p-4 bg-white/[0.02] border border-white/5 hover:border-cyan-500/20 transition-all flex items-center justify-between group">
                                 <div className="flex items-center gap-5">
-                                    <div className="w-10 h-10 rounded-sm bg-cyan-500/5 border border-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500 group-hover:text-black transition-all">
-                                        <User size={18} />
+                                    <div className="w-12 h-12 rounded-sm bg-black border border-white/5 flex items-center justify-center group-hover:bg-cyan-500 group-hover:text-black transition-all shadow-inner">
+                                        <Activity size={20} className="text-cyan-900 group-hover:text-black" />
                                     </div>
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">

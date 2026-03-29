@@ -69,7 +69,27 @@ function ScheduleModal({ onClose, onSchedule }: { onClose: () => void; onSchedul
           </div>
           <div className="space-y-2">
             <label className="text-[8px] font-black text-zinc-600 uppercase tracking-[0.3em]">Target_Timestamp</label>
-            <input type="datetime-local" className="w-full bg-black border border-white/5 py-4 px-5 text-[12px] text-white font-mono focus:outline-none focus:border-white/20" value={time} onChange={e => setTime(e.target.value)} />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <input type="date" className="bg-black border border-white/5 py-4 px-5 text-[12px] text-white font-mono focus:outline-none focus:border-white/20" value={time.split('T')[0]} onChange={e => setTime(e.target.value + 'T' + (time.split('T')[1] || '12:00'))} />
+              <select className="bg-black border border-white/5 py-4 px-5 text-[12px] text-white font-mono focus:outline-none focus:border-white/20 appearance-none" onChange={e => {
+                const parts = time.split('T');
+                const t = parts[1] || '12:00';
+                const [h, m] = t.split(':');
+                setTime(parts[0] + 'T' + e.target.value + ':' + m);
+              }}>
+                {Array.from({length: 24}).map((_, i) => (
+                  <option key={i} value={i.toString().padStart(2, '0')}>{i.toString().padStart(2, '0')}:00</option>
+                ))}
+              </select>
+              <select className="bg-black border border-white/5 py-4 px-5 text-[12px] text-white font-mono focus:outline-none focus:border-white/20 appearance-none" onChange={e => {
+                const parts = time.split('T');
+                const t = parts[1] || '12:00';
+                const [h, m] = t.split(':');
+                setTime(parts[0] + 'T' + h + ':' + e.target.value);
+              }}>
+                {['00', '15', '30', '45'].map(m => <option key={m} value={m}>{m}m</option>)}
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4 mt-8">
             <button onClick={onClose} className="py-4 bg-white/[0.02] border border-white/5 text-zinc-600 text-[9px] font-black uppercase">Cancel</button>
@@ -256,8 +276,21 @@ const App: React.FC = () => {
                 <Shield size={14} />
               </button>
             )}
-            <button onClick={() => setShowSocialManager(true)} className="w-9 h-8 flex items-center justify-center border border-[var(--border)] rounded-sm bg-[var(--btn-bg)] text-[var(--text)] hover:border-[var(--accent)]/40 transition-all" title="Social Mesh">
-              <MessageSquare size={14} />
+            <button 
+              onClick={() => {
+                const isGuest = sessionStorage.getItem('ghost_guest_session');
+                if (isGuest) {
+                  if (confirm('SOCIAL_LOCK: REGISTERED_NODES_ONLY. REDIRECT_TO_UPLINK_STATION?')) {
+                    handleLogout();
+                  }
+                } else {
+                  setShowSocialManager(true);
+                }
+              }} 
+              className="w-9 h-8 flex items-center justify-center border border-cyan-500/20 rounded-sm bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 transition-all group overflow-hidden" 
+              title="Social Mesh (Authenticated Only)"
+            >
+              <UserPlus className="animate-pulse group-hover:scale-125 transition-transform" size={14} />
             </button>
           </div>
         </div>
@@ -290,19 +323,6 @@ const App: React.FC = () => {
                 </div>
               </button>
 
-              <div className="flex-1 bg-black border border-white/10 text-white p-6 flex flex-col justify-between gap-4 group hover:border-cyan-500/40 transition-all duration-500">
-                <div className="flex items-center gap-3">
-                  <Terminal className="text-zinc-800 group-hover:text-cyan-500 transition-colors" size={24} />
-                  <span className="text-[10px] font-black uppercase text-zinc-800 tracking-widest group-hover:text-cyan-900">Join Stable</span>
-                </div>
-                <input 
-                  className="w-full bg-black border border-white/10 py-2 px-3 text-[10px] text-white focus:outline-none focus:border-cyan-500/30 font-mono uppercase"
-                  placeholder="ROOM_ID"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') joinMeeting((e.target as HTMLInputElement).value.toUpperCase().trim());
-                  }}
-                />
-              </div>
 
               <button
                 onClick={() => setShowScheduleModal(true)}
@@ -324,7 +344,13 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <MeetCall onClose={closeMeeting} externalRoomId={joinRoomId} userName={currentUser?.name || 'NODE'} isHost={isHost} />
+          <MeetCall 
+            onClose={closeMeeting} 
+            externalRoomId={joinRoomId} 
+            userName={currentUser?.name || 'NODE'} 
+            isHost={isHost} 
+            isGuest={!!sessionStorage.getItem('ghost_guest_session')} 
+          />
         )}
 
         {showSocialManager && (
