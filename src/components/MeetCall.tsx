@@ -283,88 +283,104 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     }, []);
 
     useEffect(() => {
-        initNode();
-        
+        // Initial Mount setup
+    }, []);
+
+    // 1. Peer Initialization (ONCE)
+    useEffect(() => {
+        if (!peerRef.current) {
+            initNode();
+        }
+    }, [roomId]);
+
+    // 2. Media Initialization (When permissions or Peer changes)
+    useEffect(() => {
+        const updateMedia = async () => {
+            if (!hasMediaAccess || !peerRef.current) return;
+            try {
+                // If we already have a stream, just update tracks if needed
+                // For simplicity on mobile, we'll just re-fetch if requested hardware changed
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    video: reqCam ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+                    audio: reqMic
+                });
+                
+                // Replace tracks in all active calls
+                const videoTrack = newStream.getVideoTracks()[0];
+                const audioTrack = newStream.getAudioTracks()[0];
+                
+                await replaceTrackInCalls(videoTrack);
+                // Note: PeerJS audio track replacement is more complex, 
+                // but usually handled by stream answer.
+                
+                localStreamRef.current = newStream;
+                if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+            } catch (err) {
+                console.warn('[MEDIA_SYNC] Failed to update media tracks:', err);
+            }
+        };
+
+        if (hasMediaAccess) updateMedia();
+    }, [reqMic, reqCam, hasMediaAccess]);
+
+    // 3. Signaling & Discovery (When Peer is OPEN)
+    useEffect(() => {
         let signalChannel: any = null;
         let pulseInterval: any = null;
 
-        if (isCloudBackupActive()) {
-            // 1. Discovery Channel: Listen for FUTURE peers joining
-            signalChannel = (supabase as any)
-                .channel(`signaling-${roomId}`)
-                .on('postgres_changes', { 
-                    event: 'INSERT', 
-                    schema: 'public', 
-                    table: 'meeting_signaling', 
-                    filter: `room_id=eq.${roomId}` 
-                }, (payload: any) => {
-                    const newPeerId = payload.new.peer_id;
-                    if (newPeerId !== peerRef.current?.id) {
-                        console.log(`[SIGNALING] Discovery (INSERT): ${newPeerId}`);
-                        connectToPeer(newPeerId);
-                    }
-                })
-                .subscribe();
+        const setupSignaling = async () => {
+          if (!peerRef.current || !peerRef.current.open) return;
 
-            // 2. Initial Discovery: Fetch EXISTING peers immediately
-            const fetchExistingPeers = async () => {
-                const { data } = await (supabase as any)
-                    .from('meeting_signaling')
-                    .select('peer_id')
-                    .eq('room_id', roomId);
-                
-                if (data && data.length > 0) {
-                    console.log(`[SIGNALING] Discovery (INITIAL): Found ${data.length} existing nodes`);
-                    data.forEach((p: any) => {
-                        if (p.peer_id !== peerRef.current?.id) {
-                            connectToPeer(p.peer_id);
-                        }
-                    });
-                }
-            };
-            
-            // Wait a small delay for Peer to open before fetching
-            const timer = setTimeout(fetchExistingPeers, 1500);
+          if (isCloudBackupActive()) {
+              // A. Discovery Channel: Listen for FUTURE peers joining
+              signalChannel = (supabase as any)
+                  .channel(`signaling-${roomId}`)
+                  .on('postgres_changes', { 
+                      event: 'INSERT', 
+                      schema: 'public', 
+                      table: 'meeting_signaling', 
+                      filter: `room_id=eq.${roomId}` 
+                  }, (payload: any) => {
+                      const newPeerId = payload.new.peer_id;
+                      if (newPeerId !== peerRef.current?.id) {
+                          console.log(`[SIGNALING] Discovery (INSERT): ${newPeerId}`);
+                          connectToPeer(newPeerId);
+                      }
+                  })
+                  .subscribe();
 
-            // 3. Active Meeting Registry (Host Only)
-            if (isHost || myRole === 'origin') {
-                const registerMeeting = async () => {
-                    await (supabase as any).from('active_meetings').upsert({
-                        room_id: roomId,
-                        host_name: userName || myCodename,
-                        is_public: true,
-                        last_pulse: new Date().toISOString()
-                    });
-                };
-                
-                registerMeeting();
-                pulseInterval = setInterval(registerMeeting, 30000); // 30s pulse
-            }
+              // B. Initial Discovery: Fetch EXISTING peers immediately
+              resyncRoom();
 
-            return () => {
-                clearTimeout(timer);
-                localStreamRef.current?.getTracks().forEach((t) => t.stop());
-                screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-                peerRef.current?.destroy();
-                if (signalChannel) (supabase as any).removeChannel(signalChannel);
-                if (pulseInterval) clearInterval(pulseInterval);
-                
-                // Cleanup presence on exit
-                if (isCloudBackupActive()) {
-                    (supabase as any).from('meeting_signaling').delete().eq('room_id', roomId).eq('peer_id', peerRef.current?.id);
-                    if (isHost || myRole === 'origin') {
-                      (supabase as any).from('active_meetings').delete().eq('room_id', roomId);
-                    }
-                }
-            };
-        }
+              // C. Active Meeting Registry (Host Only)
+              if (isHost || myRole === 'origin') {
+                  const registerMeeting = async () => {
+                      await (supabase as any).from('active_meetings').upsert({
+                          room_id: roomId,
+                          host_name: userName || myCodename,
+                          is_public: true,
+                          last_pulse: new Date().toISOString()
+                      });
+                  };
+                  registerMeeting();
+                  pulseInterval = setInterval(registerMeeting, 30000); // 30s pulse
+              }
+          }
+        };
+
+        const checkPeer = setInterval(() => {
+          if (peerRef.current?.open) {
+            setupSignaling();
+            clearInterval(checkPeer);
+          }
+        }, 1000);
 
         return () => {
-            localStreamRef.current?.getTracks().forEach((t) => t.stop());
-            screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-            peerRef.current?.destroy();
+            clearInterval(checkPeer);
+            if (signalChannel) (supabase as any).removeChannel(signalChannel);
+            if (pulseInterval) clearInterval(pulseInterval);
         };
-    }, [reqMic, reqCam]);
+    }, [roomId, isHost]);
 
     const initNode = async () => {
         try {
@@ -718,6 +734,24 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         addSystemMessage(`ADDED ${name} TO CONTACTS`);
     };
 
+    const resyncRoom = async () => {
+        if (!peerRef.current?.open) return;
+        console.log('[SIGNALING] Manual Resync Triggered');
+        const { data } = await (supabase as any)
+            .from('meeting_signaling')
+            .select('peer_id')
+            .eq('room_id', roomId);
+        
+        if (data && data.length > 0) {
+            data.forEach((p: any) => {
+                if (p.peer_id !== peerRef.current?.id) {
+                    connectToPeer(p.peer_id);
+                }
+            });
+        }
+        addSystemMessage('NETWORK_RESCAN_COMPLETE: PERSISTENT MESH STABILIZED');
+    };
+
     const endCall = () => {
         localStreamRef.current?.getTracks().forEach((t) => t.stop());
         screenStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -745,6 +779,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                             <div className={`h-1 w-1 md:h-1.5 md:w-1.5 rounded-full ${myRole === 'shadow' ? 'bg-zinc-700' : 'bg-cyan-500'} animate-pulse shadow-[0_0_10px_currentColor]`} />
                         </div>
                         <span className="text-[6px] md:text-[7px] font-mono text-zinc-600 uppercase tracking-widest mt-0.5 md:mt-1 truncate max-w-[100px] md:max-w-none">{statusMsg}</span>
+                        <button onClick={resyncRoom} className="text-[5px] text-cyan-500/50 hover:text-cyan-500 font-black uppercase tracking-widest mt-1 text-left transition-colors">RE-SCAN NODES [STABILITY_RECOVERY]</button>
                     </div>
                 </div>
 
