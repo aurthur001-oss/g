@@ -20,9 +20,10 @@ import {
     ChevronRight,
     BookOpen,
     Shield,
-    ToggleLeft,
     ToggleRight,
-    UserPlus
+    UserPlus,
+    Sun,
+    Moon
 } from 'lucide-react';
 import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
@@ -87,7 +88,7 @@ function PermissionToggle({ icon, label, desc, active, onClick, title }: Permiss
     );
 }
 
-function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact }: VideoTileProps) {
+function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: externalVideoRef, role, codename, isEnhanced, onAddContact, isLowLight }: VideoTileProps & { isLowLight?: boolean }) {
     const internalVideoRef = useRef<HTMLVideoElement>(null);
     const videoRef = externalVideoRef || internalVideoRef;
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -146,7 +147,14 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
             onClick={handleManualPlay}
             className="relative w-full aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
         >
-            <video ref={videoRef} autoPlay playsInline muted={isLocal || isMuted} style={{ filter: isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none' }} className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} />
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              muted={isLocal || isMuted} 
+              style={{ filter: isLowLight ? 'brightness(1.5) contrast(1.2) saturate(1.1)' : (isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none') }} 
+              className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} 
+            />
             
             {!isLocal && !isCameraOff && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 pointer-events-none">
@@ -233,6 +241,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [chatInput, setChatInput] = useState('');
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isLowLight, setIsLowLight] = useState(false);
 
     const peerRef = useRef<Peer | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
@@ -513,6 +523,9 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         conn.on('data', (data: any) => {
             if (data.type === 'CHAT') {
                 setMessages((prev) => [...prev, data.message]);
+                if (!showChat) {
+                    setUnreadCount((prev) => prev + 1);
+                }
             } else if (data.type === 'META_SYNC') {
                 updatePeerCodename(conn.peer, data.codename, data.role);
                 addSystemMessage(`${data.codename.toUpperCase()} ENTERED THE MEETING`);
@@ -833,10 +846,10 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                         <div className="w-full h-full flex flex-col items-center justify-center relative">
                             <div className={`w-full grid gap-6 transition-all duration-700 place-items-center ${getGridCols()}`}>
                                  {myRole !== 'shadow' && (
-                                    <VideoTile stream={localStreamRef.current} isMuted={true} isCameraOff={isCameraOff && !isScreenSharing} isLocal={true} isScreen={isScreenSharing} videoRef={localVideoRef} role={myRole} codename={myCodename} isEnhanced={isEnhanced} />
+                                    <VideoTile stream={localStreamRef.current} isMuted={true} isCameraOff={isCameraOff && !isScreenSharing} isLocal={true} isScreen={isScreenSharing} videoRef={localVideoRef} role={myRole} codename={myCodename} isEnhanced={isEnhanced} isLowLight={isLowLight} />
                                 )}
                                 {remotePeers.filter((p) => p.role !== 'shadow').map((peer) => (
-                                    <VideoTile key={peer.peerId} stream={peer.stream} role={peer.role} codename={peer.codename} isEnhanced={isEnhanced} onAddContact={() => addToContacts(peer.peerId, peer.codename)} />
+                                    <VideoTile key={peer.peerId} stream={peer.stream} role={peer.role} codename={peer.codename} isEnhanced={isEnhanced} onAddContact={() => addToContacts(peer.peerId, peer.codename)} isLowLight={isLowLight} />
                                 ))}
                             </div>
                             <div className="mt-12 flex flex-wrap justify-center gap-4">
@@ -897,7 +910,14 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
                             <div className="flex items-center gap-1 md:gap-4 bg-[var(--btn-bg)] p-1 md:p-2 border border-[var(--border)] rounded-sm">
                                 <ControlBtn icon={isScreenSharing ? <MonitorOff /> : <MonitorUp />} active={isScreenSharing} onClick={toggleScreenShare} disabled={myRole === 'shadow'} title="Screen Share" className="hidden sm:flex" />
-                                <ControlBtn icon={<MessageSquare />} active={showChat} onClick={() => setShowChat(!showChat)} title="Chat" />
+                                <div className="relative">
+                                    <ControlBtn icon={<MessageSquare />} active={showChat} onClick={() => { setShowChat(!showChat); setUnreadCount(0); }} title="Chat" />
+                                    {unreadCount > 0 && !showChat && (
+                                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center border-2 border-black animate-bounce shadow-[0_0_15px_rgba(220,38,38,0.5)] z-[60]">
+                                            <span className="text-[10px] font-black text-white">{unreadCount}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -911,6 +931,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
                         {/* Secondary Desktop Controls */}
                         <div className="hidden lg:flex items-center gap-4 order-3">
+                            <ControlBtn icon={isLowLight ? <Sun /> : <Moon />} active={isLowLight} onClick={() => setIsLowLight(!isLowLight)} title="Low Light Boost" />
                             <ControlBtn icon={<BookOpen />} active={showBriefing} onClick={() => setShowBriefing(true)} />
                             <ControlBtn icon={<Settings />} active={showSettings} onClick={() => setShowSettings(!showSettings)} />
                             <div className="flex border-l border-[var(--border)] ml-2 pl-4 gap-4 items-center">
