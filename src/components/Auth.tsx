@@ -18,6 +18,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
         }
         return 'guest';
     });
+    const [guestName, setGuestName] = useState('');
     const [loginUser, setLoginUser] = useState('');
     const [loginPass, setLoginPass] = useState('');
     const [regUser, setRegUser] = useState('');
