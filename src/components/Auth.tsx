@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, ArrowRight, UserPlus, LogIn, X, Terminal, Shield, Globe } from 'lucide-react';
+import { User, Lock, ArrowRight, UserPlus, LogIn, X, Terminal, Shield, Globe, Send, Video } from 'lucide-react';
 import { Logo } from './Logo';
 import { meshNodes } from '../lib/gun';
 import { supabase, isCloudBackupActive } from '../lib/supabase';
@@ -188,8 +188,8 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             <div className="w-full max-w-6xl relative animate-in fade-in zoom-in-95 duration-700 flex flex-col gap-8 pt-12 md:pt-24 z-10">
                 <div className="flex flex-col items-center text-center">
                     <Logo size={64} className="mb-6" animate={true} />
-                    <h1 className="text-3xl md:text-5xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">Video Conference</h1>
-                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.5em] mt-2 px-12 opacity-80">Simple, Secure, P2P Meetings</p>
+                    <h1 className="text-3xl md:text-5xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">Communication Suite</h1>
+                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.5em] mt-2 px-12 opacity-80">Secure Video Meetings & Telegram Messenger</p>
                     
                     {sessionStorage.getItem('pending_host') && (
                         <div className="mt-6 px-6 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse">
@@ -202,27 +202,42 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                     <div className="w-full max-w-md mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                         <form onSubmit={handleGuestLogin} className="space-y-6">
                             <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.3em] pl-1">Your Display Name</label>
+                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.3em] pl-1">Identification Required</label>
                                 <div className="relative group">
                                     <Terminal className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)] group-focus-within:text-[var(--accent)] transition-colors" size={16} />
                                     <input
                                         type="text"
                                         className="w-full bg-[var(--panel)] border border-[var(--border)] py-5 pl-12 pr-4 text-[var(--text)] text-[12px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 focus:ring-1 focus:ring-[var(--accent)]/20 transition-all placeholder:text-zinc-800"
-                                        placeholder="ENTER_NAME_OR_PROCEED_AS_GUEST"
+                                        placeholder="ENTER_DISPLAY_NAME..."
                                         value={guestName}
                                         onChange={e => setGuestName(e.target.value.toUpperCase())}
                                     />
                                 </div>
                             </div>
 
-                            <button
-                                type="submit"
-                                disabled={isSyncing}
-                                className="w-full py-6 bg-[var(--accent)] text-black text-[12px] font-black uppercase tracking-[0.5em] hover:bg-white hover:scale-[1.01] transition-all flex items-center justify-center gap-6 group shadow-[0_0_50px_rgba(0,229,255,0.15)] pulse-border disabled:opacity-50"
-                            >
-                                {isSyncing ? 'CONNECTING...' : 'JOIN_MEETING'}
-                                <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
-                            </button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button
+                                    type="submit"
+                                    disabled={isSyncing}
+                                    onClick={() => sessionStorage.setItem('auth_target', 'meet')}
+                                    className="py-6 bg-white text-black text-[11px] font-black uppercase tracking-[0.4em] hover:bg-cyan-500 hover:scale-[1.02] transition-all flex flex-col items-center justify-center gap-3 group shadow-2xl relative overflow-hidden"
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <Video size={24} className="relative z-10" />
+                                    <span className="relative z-10">Join Meeting</span>
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    disabled={isSyncing}
+                                    onClick={() => sessionStorage.setItem('auth_target', 'chat')}
+                                    className="py-6 bg-black border border-white/10 text-white text-[11px] font-black uppercase tracking-[0.4em] hover:border-cyan-500/60 hover:scale-[1.02] transition-all flex flex-col items-center justify-center gap-3 group shadow-2xl relative overflow-hidden"
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <Send size={24} className="text-cyan-500 relative z-10" />
+                                    <span className="relative z-10 italic">Messenger</span>
+                                </button>
+                            </div>
                         </form>
 
                         <div className="grid grid-cols-2 gap-4">

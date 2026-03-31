@@ -159,6 +159,13 @@ const App: React.FC = () => {
       }
     } catch (err) {}
 
+
+    const authTarget = sessionStorage.getItem('auth_target');
+    if (authTarget === 'chat') {
+      setShowSocialManager(true);
+      sessionStorage.removeItem('auth_target');
+    }
+
     const savedTheme = localStorage.getItem('ghost_theme') as 'dark' | 'light';
     if (savedTheme) {
       setTheme(savedTheme);
@@ -286,19 +293,29 @@ const App: React.FC = () => {
             )}
             <button 
               onClick={() => {
-                const isGuest = sessionStorage.getItem('ghost_guest_session');
-                if (isGuest) {
-                  if (confirm('ACCOUNT_LOCK: REGISTERED_USERS_ONLY. GO_TO_SIGN_IN_PAGE?')) {
-                    handleLogout('account');
-                  }
+                if (sessionStorage.getItem('ghost_guest_session')) {
+                  if (confirm('ACCOUNT_LOCK: REGISTERED_USERS_ONLY. GO_TO_SIGN_IN_PAGE?')) handleLogout('account');
                 } else {
                   setShowSocialManager(true);
                 }
               }} 
               className="w-9 h-8 flex items-center justify-center border border-cyan-500/20 rounded-sm bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 transition-all group overflow-hidden" 
-              title="Contacts (Sign In to Access)"
+              title="Telegram Messenger"
             >
-              <UserPlus className="animate-pulse group-hover:scale-125 transition-transform" size={14} />
+              <Send className="animate-pulse group-hover:scale-125 transition-transform" size={14} />
+            </button>
+            <button 
+              onClick={() => {
+                if (sessionStorage.getItem('ghost_guest_session')) {
+                  if (confirm('ACCOUNT_LOCK: REGISTERED_USERS_ONLY. GO_TO_SIGN_IN_PAGE?')) handleLogout('account');
+                } else {
+                  setShowSocialManager(true);
+                }
+              }} 
+              className="w-9 h-8 flex items-center justify-center border border-cyan-500/20 rounded-sm bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 transition-all group overflow-hidden" 
+              title="Contacts"
+            >
+              <UserPlus className="group-hover:scale-125 transition-transform" size={14} />
             </button>
           </div>
         </div>
@@ -318,7 +335,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="flex flex-col md:flex-row gap-6 w-full max-w-lg mb-12">
+            <div className="flex flex-col md:flex-row gap-4 md:gap-6 w-full max-w-2xl mb-12">
               <button
                 onClick={startMeeting}
                 className="flex-1 bg-white text-black py-6 px-8 flex flex-col items-center justify-center gap-4 hover:bg-cyan-500 transition-all duration-500 group relative overflow-hidden"
@@ -331,6 +348,23 @@ const App: React.FC = () => {
                 </div>
               </button>
 
+              <button
+                onClick={() => {
+                  if (sessionStorage.getItem('ghost_guest_session')) {
+                    if (confirm('ACCOUNT_LOCK: REGISTERED_USERS_ONLY. GO_TO_SIGN_IN_PAGE?')) handleLogout('account');
+                  } else {
+                    setShowSocialManager(true);
+                  }
+                }}
+                className="flex-1 bg-white/[0.04] border border-white/10 text-white py-6 px-8 flex flex-col items-center justify-center gap-4 hover:border-cyan-500/60 transition-all duration-500 group relative overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Send className="relative z-10 text-cyan-500" size={32} />
+                <div className="text-center relative z-10">
+                  <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-cyan-500">Telegram</span>
+                  <span className="block text-lg font-light italic mt-1">Messenger</span>
+                </div>
+              </button>
 
               <button
                 onClick={() => setShowScheduleModal(true)}

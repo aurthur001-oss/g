@@ -78,9 +78,180 @@ interface VideoTileProps {
     onAddContact?: () => void;
     onKick?: () => void;
     onRefresh?: () => void;
+    onClick?: () => void;
 }
 
 // --- Helper Components (Hoisted to avoid TDZ) ---
+
+// --- Audio Processing for Fan Noise Suppression ---
+const applyAudioProcess = (stream: MediaStream) => {
+    try {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack) return stream;
+        
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ latencyHint: 'interactive' });
+        const source = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
+        
+        // High-pass filter to kill low-frequency fan drone (180Hz threshold)
+        const hpf = audioContext.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.value = 180;
+        hpf.Q.value = 0.7;
+        
+        // Band-pass filter to prioritize human vocal range (300Hz - 3400Hz)
+        const bpf = audioContext.createBiquadFilter();
+        bpf.type = 'peaking';
+        bpf.frequency.value = 2000;
+        bpf.Q.value = 0.5;
+        bpf.gain.value = 3;
+        
+        const destination = audioContext.createMediaStreamDestination();
+        source.connect(hpf);
+        hpf.connect(bpf);
+        bpf.connect(destination);
+        
+        return destination.stream;
+    } catch (e) {
+        console.warn('[AUDIO_PROC] Failed to initialize WebAudio filters:', e);
+        return stream;
+    }
+};
+
+const getAvatarColor = (name: string) => {
+    const hues = [210, 260, 280, 20, 140, 180, 330]; 
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return `hsl(${hues[Math.abs(hash) % hues.length]}, 65%, 55%)`;
+};
+
+let globalAudioCtx: AudioContext | null = null;
+const getAudioCtx = () => {
+    if (!globalAudioCtx) {
+        globalAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (globalAudioCtx.state === 'suspended') {
+        globalAudioCtx.resume();
+    }
+    return globalAudioCtx;
+};
+
+const playLobbySound = () => {
+    try {
+        const audioCtx = getAudioCtx();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        // Dual-tone high-vis sound
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); 
+        oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.3); 
+
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.1); // Louder
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.8);
+    } catch (e) {
+        console.error('Lobby sound failed:', e);
+    }
+};
+
+// --- Advanced Zero-Latency WebRTC Optimization (SDP Filtering) ---
+const filterSDP = (sdp: string) => {
+    let lines = sdp.split('\n');
+    
+    // 1. Connectivity: Remove IPv6/mDNS candidates for faster ICE
+    lines = lines.filter(line => !line.includes('typ host') || !line.includes(':'))
+                 .filter(line => !line.includes('.local'));
+
+    // 2. Audio: Force Studio-Grade Opus (510kbps, Stereo, Low Latency)
+    lines = lines.map(line => {
+        if (line.includes('a=fmtp:') && line.includes('opus')) {
+            // Ultra-Low-Latency: minptime=10 for faster packet dispatch
+            return line.split(' ')[0] + ' minptime=10; ptime=10; maxptime=20; useinbandfec=1; stereo=1; sprop-stereo=1; maxaveragebitrate=510000; usedtx=0';
+        }
+        return line;
+    });
+
+    // 3. Video: Force UHD Bitrates (8Mbps+)
+    // Inject b=AS and b=TIAS lines after every m=video line
+    const result = [];
+    for (let i = 0; i < lines.length; i++) {
+        result.push(lines[i]);
+        if (lines[i].startsWith('m=video')) {
+            result.push('b=AS:8000');
+            result.push('b=TIAS:8000000');
+        }
+    }
+
+    return result.join('\n');
+};
+
+// --- Nuclear SDP Patch (Global Handshake Acceleration) ---
+if (typeof window !== 'undefined' && (window as any).RTCPeerConnection) {
+    const originalSetLocal = (window as any).RTCPeerConnection.prototype.setLocalDescription;
+    (window as any).RTCPeerConnection.prototype.setLocalDescription = function(...args: any[]) {
+        const description = args[0];
+        if (description && description.sdp) {
+            description.sdp = filterSDP(description.sdp);
+        }
+        return originalSetLocal.apply(this, args);
+    };
+}
+
+// --- Advanced Digital Audio Chain for Studio-Clear Voice (Fan Killer) ---
+const applyAudioProcess = (stream: MediaStream) => {
+    try {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack) return stream;
+        
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ latencyHint: 'interactive' });
+        const source = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
+        
+        // STAGE 1: Aggressive High-pass filter to kill low-frequency fan drone (Target: < 220Hz)
+        const hpf = audioContext.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.value = 220;
+        hpf.Q.value = 1.0;
+        
+        // STAGE 2: Notch filter to specifically target common 50Hz/60Hz electrical hum & fan harmonics
+        const notch = audioContext.createBiquadFilter();
+        notch.type = 'notch';
+        notch.frequency.value = 60;
+        notch.Q.value = 10;
+        
+        // STAGE 3: Peaking filter for "Mirrored Presence" (Vocal Boost at 2.5kHz)
+        const presence = audioContext.createBiquadFilter();
+        presence.type = 'peaking';
+        presence.frequency.value = 2500;
+        presence.Q.value = 1.0;
+        presence.gain.value = 6;
+        
+        // STAGE 4: Dynamics Compressor to act as a Noise Gate + Volume Leveler
+        const compressor = audioContext.createDynamicsCompressor();
+        compressor.threshold.value = -35; // Aggressive floor to cut low-volume fans
+        compressor.knee.value = 20;
+        compressor.ratio.value = 12;
+        compressor.attack.value = 0.005;
+        compressor.release.value = 0.2;
+        
+        const destination = audioContext.createMediaStreamDestination();
+        source.connect(hpf);
+        hpf.connect(notch);
+        notch.connect(presence);
+        presence.connect(compressor);
+        compressor.connect(destination);
+        
+        return destination.stream;
+    } catch (e) {
+        console.warn('[VIRTUAL_CIRCUIT] Hardware Audio Chain Failed:', e);
+        return stream;
+    }
+};
 
 function PermissionToggle({ icon, label, desc, active, onClick, title }: PermissionToggleProps & { title?: string }) {
     return (
@@ -163,8 +334,11 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
 
     return (
         <div 
-            onClick={handleManualPlay}
-            className="relative w-full aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center cursor-pointer active:scale-[0.98] transition-transform"
+            onClick={() => {
+                handleManualPlay();
+                if (onClick) onClick();
+            }}
+            className="relative w-full aspect-[9/16] md:aspect-video bg-[#050505] border border-white/[0.05] rounded-sm overflow-hidden group shadow-2xl flex items-center justify-center cursor-pointer active:scale-[0.98] transition-all duration-300"
         >
             <video 
               ref={videoRef} 
@@ -172,7 +346,14 @@ function VideoTile({ stream, isMuted, isCameraOff, isLocal, isScreen, videoRef: 
               playsInline 
               muted={isLocal || isMuted} 
               onPlay={() => setIsPlaying(true)}
-              style={{ filter: isLowLight ? 'brightness(1.5) contrast(1.2) saturate(1.1)' : (isEnhanced ? 'brightness(1.1) contrast(1.1) saturate(1.2)' : 'none') }} 
+              style={{ 
+                filter: `
+                    ${isLowLight ? 'brightness(1.8) contrast(1.3) saturate(1.2) sepia(0.05)' : (isEnhanced ? 'brightness(1.1) contrast(1.15) saturate(1.25)' : 'none')}
+                    ${!isLocal ? 'contrast(1.15) brightness(1.08) saturate(1.2) drop-shadow(0 0 8px rgba(0,229,255,0.15))' : ''}
+                `.trim(),
+                imageRendering: 'pixelated',
+                boxShadow: !isLocal ? 'inset 0 0 60px rgba(0,229,255,0.08)' : 'none'
+              }} 
               className={`w-full h-full ${isScreen ? 'object-contain bg-black' : 'object-cover'} transition-all duration-1000 ${isLocal && !isScreen ? 'scale-x-[-1]' : ''} ${isCameraOff ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`} 
             />
             
@@ -273,6 +454,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const [chatInput, setChatInput] = useState('');
     const [unreadCount, setUnreadCount] = useState(0);
     const [isLowLight, setIsLowLight] = useState(false);
+    const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null);
     const [showEmojis, setShowEmojis] = useState(false);
     const [lobbyPeers, setLobbyPeers] = useState<{peerId: string, codename: string}[]>([]);
     const [isAdmitted, setIsAdmitted] = useState(isHost);
@@ -287,6 +469,16 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const chatEndRef = useRef<HTMLDivElement>(null);
     const admittedPeersRef = useRef<Set<string>>(new Set());
     const lastSyncRef = useRef<number>(Date.now());
+
+    // WhatsApp UX: Auto-focus the remote peer in 1-on-1 sessions
+    useEffect(() => {
+        const eligiblePeers = remotePeers.filter(p => p.role !== 'shadow');
+        if (eligiblePeers.length === 1 && !focusedPeerId) {
+            setFocusedPeerId(eligiblePeers[0].peerId);
+        } else if (eligiblePeers.length === 0 && focusedPeerId) {
+            setFocusedPeerId(null);
+        }
+    }, [remotePeers.length, focusedPeerId]);
 
     useEffect(() => {
         if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -303,12 +495,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     // Mobile Fix: Global user interaction listener to resume AudioContexts
     useEffect(() => {
         const handleInteraction = () => {
+            getAudioCtx(); // Ensure global context is active
             const allAudios = document.querySelectorAll('video');
             allAudios.forEach(v => {
                 if (v.paused && v.srcObject) (v as HTMLVideoElement).play().catch(() => {});
             });
-            // We can't easily access the component's audioCtx from here, 
-            // but the VideoTile click handler will take care of it too.
         };
         window.addEventListener('click', handleInteraction);
         window.addEventListener('touchstart', handleInteraction);
@@ -392,9 +583,49 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 // If we already have a stream, just update tracks if needed
                 // For simplicity on mobile, we'll just re-fetch if requested hardware changed
                 const newStream = await navigator.mediaDevices.getUserMedia({
-                    video: reqCam ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
-                    audio: reqMic
+                    video: reqCam ? { 
+                        width: { ideal: 1920, min: 1280 }, 
+                        height: { ideal: 1080, min: 720 },
+                        frameRate: { ideal: 30, max: 60 },
+                        aspectRatio: window.innerHeight > window.innerWidth ? 0.5625 : 1.7777777778
+                    } : false,
+                    audio: reqMic ? {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 2,
+                        sampleRate: 48000,
+                        sampleSize: 16,
+                        // Advanced Noise Filtering (Chrome/Edge/Safari support vary)
+                        // Using any-type to bypass strict TS for experimental constraints
+                        ...({
+                            googEchoCancellation: true,
+                            googAutoGainControl: true,
+                            googNoiseSuppression: true,
+                            googHighpassFilter: true,
+                            googTypingNoiseDetection: true,
+                            googAudioMirroring: false,
+                            googJitterBufferTargetMs: 0,
+                            googJitterBufferMaxMs: 150
+                        } as any)
+                    } : false
                 });
+
+                // Apply Ultra-Quality Priority (Antigravity Mode)
+                newStream.getVideoTracks().forEach(t => { 
+                    t.contentHint = 'detail';
+                    if ((t as any).applyConstraints) {
+                        (t as any).applyConstraints({ 
+                            degradationPreference: 'maintain-resolution',
+                            googCpuOveruseDetection: false,
+                            googHighpassFilter: true,
+                            googEchoCancellation: true,
+                            googAutoGainControl: true,
+                            googNoiseSuppression: true
+                        } as any);
+                    }
+                });
+                newStream.getAudioTracks().forEach(t => { t.contentHint = 'speech'; });
                 
                 // Replace tracks in all active calls
                 const videoTrack = newStream.getVideoTracks()[0];
@@ -404,8 +635,15 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 // Note: PeerJS audio track replacement is more complex, 
                 // but usually handled by stream answer.
                 
-                localStreamRef.current = newStream;
-                if (localVideoRef.current) localVideoRef.current.srcObject = newStream;
+                // --- Apply Studio-Grade Audio Processing (Fan Suppression) ---
+                const processedStream = applyAudioProcess(newStream);
+                const finalStream = new MediaStream([
+                    ...newStream.getVideoTracks(),
+                    ...processedStream.getAudioTracks()
+                ]);
+
+                localStreamRef.current = finalStream;
+                if (localVideoRef.current) localVideoRef.current.srcObject = finalStream;
             } catch (err) {
                 console.warn('[MEDIA_SYNC] Failed to update media tracks:', err);
             }
@@ -434,8 +672,48 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                   }, (payload: any) => {
                       const newPeerId = payload.new.peer_id;
                       if (newPeerId !== peerRef.current?.id) {
-                          console.log(`[SIGNALING] Discovery (INSERT): ${newPeerId}`);
-                          connectToPeer(newPeerId);
+                          console.log(`[GLOBAL_SIGNAL] Discovery Update: ${newPeerId}`);
+                          
+                          // GLOBAL SYNC: If Host sees ANY new peer in signaling table, 
+                          // add to lobby immediately as a "Cloud-Symmetric" fail-safe.
+                          if (isHost && !admittedPeersRef.current.has(newPeerId)) {
+                              setLobbyPeers(prev => {
+                                  if (prev.find(p => p.peerId === newPeerId)) return prev;
+                                  playLobbySound();
+                                  return [...prev, { 
+                                      peerId: newPeerId, 
+                                      codename: payload.new.codename || 'REMOTE-NODE' 
+                                  }];
+                              });
+                          }
+
+                          // Also Check for Cloud Signals
+                          if (payload.new.type === 'SIGNAL' && payload.new.target_id === peerRef.current?.id) {
+                              const signalData = payload.new.data;
+                              console.log('[CLOUD_SIGNAL] Received Direct Signal:', signalData.type);
+                              
+                              if (signalData.type === 'LOBBY_ADMIT') {
+                                  setIsAdmitted(true);
+                                  addSystemMessage('SECURITY CLEARANCE GRANTED: ENTERING SESSION');
+                                  // Immediate Call-Back to Host to bridge media instantly
+                                  const hostId = payload.new.peer_id;
+                                  if (hostId && !callsRef.current.has(hostId)) {
+                                       const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                                       const call = peerRef.current?.call(hostId, streamToSend || new MediaStream(), { 
+                                           metadata: { codename: myCodename }
+                                       });
+                                       if (call) {
+                                           call.on('stream', (s) => handleRemoteStream(hostId, s));
+                                           call.on('close', () => removePeer(hostId));
+                                           callsRef.current.set(hostId, call);
+                                       }
+                                  }
+                              } else if (signalData.type === 'LOBBY_REJECT') {
+                                  handleCloudSignal(payload.new.data);
+                              }
+                          } else {
+                              connectToPeer(newPeerId);
+                          }
                       }
                   })
                   .subscribe();
@@ -492,18 +770,56 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 } else {
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: reqCam ? { 
-                            width: { ideal: 640 }, 
-                            height: { ideal: 360 },
-                            frameRate: { max: 24 }
+                            width: { ideal: 1920 }, 
+                            height: { ideal: 1080 },
+                            frameRate: { ideal: 30, max: 60 },
+                            aspectRatio: window.innerHeight > window.innerWidth ? 0.5625 : 1.7777777778
                         } : false,
-                        audio: reqMic
+                        audio: reqMic ? {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                            channelCount: 2,
+                            ...({
+                                googEchoCancellation: true,
+                                googAutoGainControl: true,
+                                googNoiseSuppression: true,
+                                googHighpassFilter: true,
+                                googTypingNoiseDetection: true,
+                                googJitterBufferTargetMs: 0
+                            } as any)
+                        } : false
                     });
+                    
+                    // --- Apply Studio-Grade Audio Processing (Fan Suppression) ---
+                    const processedStream = applyAudioProcess(stream);
+                    const finalStream = new MediaStream([
+                        ...stream.getVideoTracks(),
+                        ...processedStream.getAudioTracks()
+                    ]);
+                    
+                    // Apply Quality Priority & No Throttling
+                    finalStream.getVideoTracks().forEach(t => { 
+                        t.contentHint = 'detail';
+                        if ((t as any).applyConstraints) {
+                            (t as any).applyConstraints({ 
+                                degradationPreference: 'maintain-resolution',
+                                googCpuOveruseDetection: false,
+                                googHighpassFilter: true,
+                                googEchoCancellation: true,
+                                googAutoGainControl: true,
+                                googNoiseSuppression: true
+                            } as any);
+                        }
+                    });
+                    finalStream.getAudioTracks().forEach(t => { t.contentHint = 'speech'; });
+
                     setIsMuted(!reqMic);
                     setIsCameraOff(!reqCam);
+                    localStreamRef.current = finalStream;
                 }
             }
 
-            localStreamRef.current = stream;
             setHasMediaAccess(true);
         } catch (err) {
             console.warn('[HARDWARE] Access denied or blocked. Falling back to Silent Mode.', err);
@@ -528,21 +844,32 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun.metered.ca:443' },
                         {
                             urls: 'turn:openrelay.metered.ca:443',
                             username: 'openrelayproject',
                             credential: 'openrelayproject'
-                        },
-                        {
-                            urls: 'turn:openrelay.metered.ca:80',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
                         }
-                    ]
+                    ],
+                    // Optimization: Zero-Latency ICE & Force Trickle
+                    iceCandidatePoolSize: 0, 
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require',
+                    sdpSemantics: 'unified-plan',
+                    iceTransportPolicy: 'all'
                 }
             });
+            
+            // Nuclear Handshake: Proactive Media Dialing
+            const originalCall = peer.call.bind(peer);
+            peer.call = (id: string, stream: MediaStream, options: any = {}) => {
+                const call = originalCall(id, stream, { 
+                    ...options, 
+                    streamConnectionConstraints: { iceCandidatePoolSize: 0 } 
+                });
+                (call as any).on('error', (err: any) => console.error('[PEER_MC] Fast-Dial Error:', err));
+                return call;
+            };
             peerRef.current = peer;
 
             peer.on('open', () => {
@@ -554,7 +881,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 if (isCloudBackupActive()) {
                     (supabase as any).from('meeting_signaling').insert({
                         room_id: roomId,
-                        peer_id: myId
+                        peer_id: myId,
+                        codename: myCodename
                     });
                 }
                 
@@ -565,10 +893,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
             });
 
             peer.on('connection', (conn) => setupDataConnection(conn));
-
+            
             peer.on('call', (call) => {
-                // Security: Only answer if we are admitted or we are the host
-                if (!isAdmitted && !isHost) return;
+                // Security: Only answer if we are admitted, we are the host, or it's the Host calling us (Handshake)
+                const isFromHost = call.peer.endsWith('-HOST');
+                if (!isAdmitted && !isHost && !isFromHost) return;
 
                 const streamToSend =
                     isScreenSharing && screenStreamRef.current
@@ -635,38 +964,34 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 
                 setLobbyPeers((prev) => {
                     if (prev.find(p => p.peerId === conn.peer)) return prev;
+                    playLobbySound();
                     return [...prev, { peerId: conn.peer, codename: data.codename }];
                 });
                 addSystemMessage(`LOBBY: ${data.codename.toUpperCase()} IS WAITING TO JOIN`);
             } else if (data.type === 'LOBBY_ADMIT') {
                 setIsAdmitted(true);
-                conn.send({ type: 'LOBBY_ADMIT_ACK' });
                 addSystemMessage('THE HOST HAS ADMITTED YOU TO THE MEETING');
                 
-                // PARTICIPANT SIDE: Also initiate a call to the host after a short delay
-                // for bi-directional reliability.
+                // Nuclear Direct-Dial: Participant also attempts to call host to force bridge
+                // We add a tiny delay to allow host's call to arrive first (glare avoidance)
                 setTimeout(() => {
                     const hostId = `GHOST-CONF-${roomId}-HOST`;
-                    connectToPeer(hostId);
-                }, 4000);
-            } else if (data.type === 'LOBBY_ADMIT_ACK') {
-                // Ensure participant hardware is ready before the media offer arrives
-                setTimeout(() => {
-                    const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-                    const call = peerRef.current!.call(conn.peer, streamToSend || new MediaStream());
-                    if (call) {
-                        call.on('stream', (remoteStream) => handleRemoteStream(conn.peer, remoteStream));
-                        call.on('close', () => removePeer(conn.peer));
-                        callsRef.current.set(conn.peer, call);
+                    if (!callsRef.current.has(hostId)) {
+                        console.log('[ZERO_DELAY] Force-Calling Host for Media Bridge...');
+                        const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                        const call = peerRef.current?.call(hostId, streamToSend || new MediaStream());
+                        if (call) {
+                            call.on('stream', (s) => handleRemoteStream(hostId, s));
+                            call.on('close', () => removePeer(hostId));
+                            callsRef.current.set(hostId, call);
+                        }
                     }
-                    addSystemMessage(`MEDIA_HANDSHAKE_INITIATED: RELAYING STREAM TO ${conn.peer}`);
-                }, 2000);
+                }, 500);
+            } else if (data.type === 'LOBBY_ADMIT_ACK') {
+                // Deprecated: Host now calls immediately in admitPeer
             } else if (data.type === 'PEER_DISCOVERY') {
-                // Staggered discovery to prevent signaling storm
-                const delay = Math.floor(Math.random() * 1500);
-                setTimeout(() => {
-                    connectToPeer(data.targetPeerId);
-                }, delay);
+                // Near Zero Latency: Connection initiated immediately
+                connectToPeer(data.targetPeerId);
             } else if (data.type === 'KICK_SIGNAL') {
                 addSystemMessage('ADMIN_NOTICE: YOU HAVE BEEN REMOVED FROM THE MEETING');
                 setTimeout(() => endCall(), 2000);
@@ -675,6 +1000,18 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         conn.on('close', () => dataConnsRef.current.delete(conn.peer));
     };
 
+    const handleCloudSignal = (data: any) => {
+        console.log('[CLOUD_SIGNAL] Received Fallback Signal:', data.type);
+        if (data.type === 'LOBBY_ADMIT') {
+            setIsAdmitted(true);
+            addSystemMessage('CLOUD_BRIDGE: ADMISSION GRANTED EXTERNALLY');
+        } else if (data.type === 'HARD_SYNC_RETRY') {
+            console.warn('[ZERO_DELAY] Hard-Sync Triggered... Force Re-Calling Host');
+            const hostId = `GHOST-CONF-${roomId}-HOST`;
+            const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+            peerRef.current?.call(hostId, streamToSend || new MediaStream());
+        }
+    };
     const updatePeerCodename = (peerId: string, codename: string, role: NodeRole) => {
         setRemotePeers((prev) => {
             const exists = prev.find((p) => p.peerId === peerId);
@@ -708,37 +1045,34 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         }
 
         // Staggered connection for 20+ users
-        const delay = retryCount === 0 ? Math.floor(Math.random() * 2000) : 0;
-        
-        setTimeout(() => {
-            try {
-                const conn = peerRef.current!.connect(targetId, { reliable: true });
-                setupDataConnection(conn);
+        // Near Zero Latency: Removed staggered delay for small/medium meetings
+        try {
+            const conn = peerRef.current!.connect(targetId, { reliable: true });
+            setupDataConnection(conn);
+            
+            // Participants only call others if they are already admitted
+            if (!isHost && isAdmitted) {
+                const streamToSend =
+                    isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+                const call = peerRef.current!.call(targetId, streamToSend!);
                 
-                // Participants only call others if they are already admitted
-                // Host only calls via the 'Admit' button logic
-                if (!isHost && isAdmitted) {
-                    const streamToSend =
-                        isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-                    const call = peerRef.current!.call(targetId, streamToSend!);
+                if (call) {
+                    call.on('stream', (remoteStream) => {
+                        handleRemoteStream(targetId, remoteStream);
+                    });
                     
-                    if (call) {
-                        call.on('stream', (remoteStream) => {
-                            handleRemoteStream(targetId, remoteStream);
-                        });
-                        
-                        call.on('error', (err) => {
-                            console.error(`Peer ${targetId} handshake failed:`, err);
-                            if (retryCount < 2) setTimeout(() => connectToPeer(targetId, retryCount + 1), 3000);
-                        });
-                        call.on('close', () => removePeer(targetId));
-                        callsRef.current.set(targetId, call);
-                    }
+                    call.on('error', (err) => {
+                        console.error(`Peer ${targetId} handshake failed:`, err);
+                        // Fast retry
+                        if (retryCount < 2) setTimeout(() => connectToPeer(targetId, retryCount + 1), 500);
+                    });
+                    call.on('close', () => removePeer(targetId));
+                    callsRef.current.set(targetId, call);
                 }
-            } catch (err) {
-                console.error(`Target ${targetId} unreachable:`, err);
             }
-        }, delay);
+        } catch (err) {
+            console.error(`Target ${targetId} unreachable:`, err);
+        }
     };
 
     const removePeer = (peerId: string) => {
@@ -775,13 +1109,48 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
         setRemotePeers((prev) => {
             const exists = prev.find((p) => p.peerId === peerId);
             
-            // ATOMIC TRACK VERIFICATION
-            if (stream && stream.getTracks().length === 0) {
-                console.log(`[MEDIA] Awaiting tracks for ${peerId}...`);
-                stream.onaddtrack = () => {
-                    console.log(`[MEDIA] Track arrived for ${peerId}`);
-                    handleRemoteStream(peerId, stream);
-                };
+            // ATOMIC TRACK VERIFICATION & BITRATE OPTIMIZATION
+            if (stream) {
+                const pc = callsRef.current.get(peerId)?.peerConnection;
+                if (pc) {
+                    pc.getSenders().forEach((sender: any) => {
+                    if (sender.track?.kind === 'video') {
+                        const params = sender.getParameters();
+                        if (!params.encodings) params.encodings = [{}];
+                        // Adaptive Bitrates: 1.5Mbps base to prevent buffer-bloat on mobile
+                        params.encodings[0].maxBitrate = 2500000;
+                        params.encodings[0].maxFramerate = 30;
+                        params.encodings[0].networkPriority = 'high';
+                        sender.setParameters(params).catch(() => {});
+                    }
+                    if (sender.track?.kind === 'audio') {
+                        const params = sender.getParameters();
+                        if (!params.encodings) params.encodings = [{}];
+                        // High Fidelity Audio
+                        params.encodings[0].maxBitrate = 510000;
+                        params.encodings[0].priority = 'high';
+                        sender.setParameters(params).catch(() => {});
+                    }
+                });
+                
+                // Zero-Latency Buffer Tuning
+                const receiver = pc.getReceivers().find((r: any) => r.track?.kind === 'video');
+                if (receiver && (receiver as any).playoutDelayHint !== undefined) {
+                    (receiver as any).playoutDelayHint = 0;
+                }
+                const audioReceiver = pc.getReceivers().find((r: any) => r.track?.kind === 'audio');
+                if (audioReceiver && (audioReceiver as any).playoutDelayHint !== undefined) {
+                    (audioReceiver as any).playoutDelayHint = 0;
+                }
+                }
+                
+                if (stream.getTracks().length === 0) {
+                    console.log(`[MEDIA] Awaiting tracks for ${peerId}...`);
+                    stream.onaddtrack = () => {
+                        console.log(`[MEDIA] Track arrived for ${peerId}`);
+                        handleRemoteStream(peerId, stream);
+                    };
+                }
             }
 
             if (exists) {
@@ -912,12 +1281,89 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
 
     const admitPeer = (peerId: string) => {
         const conn = dataConnsRef.current.get(peerId);
-        if (conn) {
-            admittedPeersRef.current.add(peerId);
-            conn.send({ type: 'LOBBY_ADMIT' });
-            setLobbyPeers((prev) => prev.filter(p => p.peerId !== peerId));
-            addSystemMessage(`ADMISSION SIGNAL SENT. WAITING FOR ACK...`);
+        
+        // 1. GLOBAL CLOUD ADMISSION: Send signal via Supabase (Bypasses NAT/Firewalls)
+        if (isCloudBackupActive()) {
+            (supabase as any).from('meeting_signaling').insert({
+                room_id: roomId,
+                peer_id: peerRef.current?.id, // from host
+                target_id: peerId, // to participant
+                type: 'SIGNAL',
+                data: { type: 'LOBBY_ADMIT' },
+                created_at: new Date().toISOString()
+            });
         }
+
+        // 2. Direct P2P Admission (Standard path)
+        if (conn) {
+            conn.send({ type: 'LOBBY_ADMIT' });
+        }
+        
+        // Finalize Admission state locally
+        admittedPeersRef.current.add(peerId);
+        setLobbyPeers((prev) => prev.filter(p => p.peerId !== peerId));
+        addSystemMessage(`ADMITTING ${peerId} (SESSION_BRIDGE_ACTIVE)...`);
+        
+        // Host Side: Initiate call IMMEDIATELY after sending admit signal
+        // We use a shorter delay of 30ms to maximize speed
+        setTimeout(() => {
+            const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+            const call = peerRef.current!.call(peerId, streamToSend || new MediaStream());
+            if (call) {
+                // Direct-Dial Monitoring: Force faster ICE by attaching handlers early
+                call.on('stream', (remoteStream) => handleRemoteStream(peerId, remoteStream));
+                call.on('close', () => removePeer(peerId));
+                callsRef.current.set(peerId, call);
+                
+                // If it hasn't connected in 4s, trigger a "Hard Re-Call" via Supabase metadata
+                setTimeout(() => {
+                    if (!callsRef.current.get(peerId)?.open) {
+                        console.warn('[ZERO_DELAY] Stalled Connection Detected... Sending Hard-Sync Over Cloud');
+                        if (isCloudBackupActive()) {
+                             (supabase as any).from('meeting_signaling').insert({
+                                room_id: roomId,
+                                peer_id: peerRef.current?.id,
+                                target_id: peerId,
+                                type: 'SIGNAL',
+                                data: { type: 'HARD_SYNC_RETRY' }
+                            });
+                        }
+                    }
+                }, 4000);
+            }
+        }, 30);
+    };
+
+    const admitPeer = (peerId: string) => {
+        const conn = dataConnsRef.current.get(peerId);
+        if (conn) {
+            conn.send({ type: 'LOBBY_ADMIT' });
+        }
+        
+        // Cloud Fallback: Send admission via Supabase if P2P is slow
+        if (isCloudBackupActive()) {
+            (supabase as any).from('meeting_signaling').insert({
+                room_id: roomId,
+                peer_id: peerRef.current?.id,
+                target_id: peerId,
+                type: 'SIGNAL',
+                data: { type: 'LOBBY_ADMIT' }
+            });
+        }
+
+        admittedPeersRef.current.add(peerId);
+        setLobbyPeers(prev => prev.filter(p => p.peerId !== peerId));
+        
+        // IMPORTANT: The Host always initiates the call after admission to ensure stability
+        const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
+        const call = peerRef.current?.call(peerId, streamToSend || new MediaStream());
+        if (call) {
+            call.on('stream', (s) => handleRemoteStream(peerId, s));
+            call.on('close', () => removePeer(peerId));
+            callsRef.current.set(peerId, call);
+        }
+        
+        addSystemMessage(`ADMITTED PARTICIPANT: ${peerId}`);
     };
 
     const kickPeer = (peerId: string) => {
@@ -1001,31 +1447,28 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     </div>
 
                     {/* Invite Link - collapsible on mobile */}
-                    <button onClick={copyInvite} className="p-2.5 md:px-5 md:py-2.5 border border-white/5 bg-white/[0.02] text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-3">
-                        {copied ? <Check size={14} className="text-cyan-500" /> : <LinkIcon size={14} />}
-                        <span className="hidden md:inline">{copied ? 'LINK COPIED' : `INVITE LINK`}</span>
+                    <button onClick={copyInvite} className="p-2 md:px-5 md:py-2.5 border border-white/5 bg-white/[0.02] text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 hover:text-white hover:border-cyan-500/30 transition-all flex items-center gap-3">
+                        {copied ? <Check size={12} className="text-cyan-500" /> : <LinkIcon size={12} />}
+                        <span className="hidden sm:inline">{copied ? 'LINK COPIED' : `INVITE`}</span>
                     </button>
 
                     {/* Lobby Controls for Host */}
-                    {isHost && (
-                        <div className={`flex items-center gap-2 border px-4 py-1.5 rounded-sm transition-all ${lobbyPeers.length > 0 ? 'bg-cyan-500/10 border-cyan-500/30 animate-pulse' : 'bg-white/[0.02] border-white/5 opacity-40 hover:opacity-100'}`}>
-                            <Users size={14} className={lobbyPeers.length > 0 ? 'text-cyan-500' : 'text-zinc-500'} />
-                            <span className={`text-[8px] font-black uppercase tracking-widest ${lobbyPeers.length > 0 ? 'text-cyan-500' : 'text-zinc-600'}`}>
-                                {lobbyPeers.length > 0 ? `${lobbyPeers.length} WAITING` : 'LOBBY EMPTY'}
-                            </span>
-                            {lobbyPeers.length > 0 && (
-                                <div className="flex -space-x-1 ml-2">
-                                    {lobbyPeers.map(p => (
-                                        <button 
-                                            key={p.peerId}
-                                            onClick={() => admitPeer(p.peerId)}
-                                            className="h-6 px-3 bg-cyan-500 text-black text-[7px] font-black uppercase tracking-tighter hover:bg-white transition-all shadow-[0_0_10px_rgba(0,255,255,0.2)]"
-                                        >
-                                            ADMIT {p.codename.split('-')[0]}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
+                    {/* Lobby Controls for Host - Optimized for Mobile Overlay */}
+                    {isHost && lobbyPeers.length > 0 && (
+                        <div className="flex items-center gap-2">
+                             <div className="flex -space-x-1 overflow-x-auto max-w-[180px] md:max-w-none no-scrollbar py-1">
+                                {lobbyPeers.map(p => (
+                                    <button 
+                                        key={p.peerId}
+                                        onClick={() => admitPeer(p.peerId)}
+                                        className="h-10 md:h-12 px-4 md:px-6 bg-cyan-500 text-black text-[10px] md:text-[11px] font-black uppercase tracking-tighter hover:bg-white transition-all shadow-[0_0_30px_rgba(0,255,255,0.4)] shrink-0 flex items-center gap-3 border-2 border-cyan-400 rounded-sm"
+                                    >
+                                        <UserPlus size={16} />
+                                        <span className="hidden xs:inline">ADMIT {p.codename.split('-')[0]}</span>
+                                        <span className="xs:hidden">{p.codename[0]}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -1035,10 +1478,31 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 </div>
             </header>
 
-            <main className="flex-1 flex overflow-hidden relative">
-                <div className="flex-1 p-6 flex flex-col items-center justify-center relative mesh-grid overflow-hidden">
+            <main className="flex-1 flex overflow-hidden relative" onClick={() => { if (focusedPeerId) setFocusedPeerId(null); }}>
+                {/* 1. Immersive Focused Peer Context (WhatsApp Style Remote) */}
+                {focusedPeerId && (
+                    <div className="absolute inset-0 z-0 bg-black overflow-hidden animate-in fade-in duration-500">
+                         {(() => {
+                             const focusedPeer = remotePeers.find(p => p.peerId === focusedPeerId);
+                             return focusedPeer ? (
+                                <VideoTile 
+                                    stream={focusedPeer.stream} 
+                                    role={focusedPeer.role} 
+                                    codename={focusedPeer.codename} 
+                                    isEnhanced={isEnhanced}
+                                    isLowLight={isLowLight}
+                                    onClick={() => setFocusedPeerId(null)}
+                                />
+                             ) : null;
+                         })()}
+                         {/* Ambient Vignette Overlay */}
+                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
+                    </div>
+                )}
+
+                <div className={`flex-1 p-4 md:p-6 flex flex-col items-center justify-center relative mesh-grid overflow-hidden transition-all duration-500 ${focusedPeerId ? 'bg-black/20 backdrop-blur-sm z-10' : ''}`}>
                     {!hasMediaAccess ? (
-                        <div className="w-full max-w-lg bg-[#050505] border border-white/5 p-12 text-center shadow-2xl animate-in zoom-in-95 duration-500 relative z-10">
+                        <div className="w-full max-w-lg bg-[#050505] border border-white/5 p-12 text-center shadow-2xl animate-in zoom-in-95 duration-500 relative z-10" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-4 mb-10">
                                 <div className="w-16 h-16 bg-cyan-500/5 border border-cyan-500/10 rounded-sm flex items-center justify-center">
                                     {isConnecting ? <Loader2 size={24} className="text-cyan-500 animate-spin" /> : <Shield size={24} className="text-cyan-900" />}
@@ -1062,7 +1526,9 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                             <p className="mt-8 text-[7px] font-mono text-zinc-900 uppercase tracking-widest">SYSTEM: Peer signaling initiated on {localStorage.getItem('ghost_peer_host') || '0.peerjs.com'}.</p>
                         </div>
                     ) : !isAdmitted ? (
-                        <div className="w-full max-w-md bg-[#050505] border border-white/10 p-12 text-center shadow-2xl relative z-20">
+                        <div className="w-full max-w-md bg-[#050505] border border-white/10 p-12 text-center shadow-2xl relative z-20" 
+                             onClick={() => getAudioCtx()} // Resume on lobby click
+                        >
                              <div className="flex flex-col items-center gap-8">
                                 <div className="relative">
                                     <div className="w-24 h-24 rounded-full border border-cyan-500/20 flex items-center justify-center animate-pulse">
@@ -1079,23 +1545,35 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                              </div>
                         </div>
                     ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center relative">
-                            <div className={`w-full grid gap-6 transition-all duration-700 place-items-center ${getGridCols()}`}>
+                        <div className={`w-full h-full flex flex-col items-center justify-center relative`}>
+                            {/* The Grid / Ribbon Switcher */}
+                            <div 
+                                onClick={(e) => e.stopPropagation()}
+                                className={`w-full ${focusedPeerId ? 'flex overflow-x-auto gap-3 no-scrollbar absolute bottom-10 left-0 right-0 px-8 z-50 py-4' : `grid gap-4 md:gap-6 place-items-center transition-all duration-700 ${getGridCols()}`}`}
+                            >
+                                 
+                                 {/* Self View: Floating Corner (WhatsApp Style) when someone is focused */}
                                  {myRole !== 'shadow' && (
-                                    <VideoTile stream={localStreamRef.current} isMuted={true} isCameraOff={isCameraOff && !isScreenSharing} isLocal={true} isScreen={isScreenSharing} videoRef={localVideoRef} role={myRole} codename={myCodename} isEnhanced={isEnhanced} isLowLight={isLowLight} />
+                                    <div className={`${focusedPeerId ? 'fixed bottom-24 right-6 w-32 md:w-56 aspect-[9/16] md:aspect-video z-[100] shadow-[0_0_50px_rgba(0,0,0,0.9)] border-2 border-white/10 rounded-lg overflow-hidden animate-in slide-in-from-bottom-20 duration-500 cursor-move' : 'w-full'}`}>
+                                        <VideoTile stream={localStreamRef.current} isMuted={true} isCameraOff={isCameraOff && !isScreenSharing} isLocal={true} isScreen={isScreenSharing} videoRef={localVideoRef} role={myRole} codename={myCodename} isEnhanced={isEnhanced} isLowLight={isLowLight} />
+                                    </div>
                                 )}
-                                {remotePeers.filter((p) => p.role !== 'shadow').map((peer) => (
-                                    <VideoTile 
-                                        key={peer.peerId} 
-                                        stream={peer.stream} 
-                                        role={peer.role} 
-                                        codename={peer.codename} 
-                                        isEnhanced={isEnhanced} 
-                                        onAddContact={() => addToContacts(peer.peerId, peer.codename)} 
-                                        onKick={isHost ? () => kickPeer(peer.peerId) : undefined}
-                                        onRefresh={() => connectToPeer(peer.peerId)}
-                                        isLowLight={isLowLight} 
-                                    />
+
+                                {/* Main Participant Grid / Ribbon */}
+                                {remotePeers.filter((p) => p.role !== 'shadow' && p.peerId !== focusedPeerId).map((peer) => (
+                                    <div key={peer.peerId} className={focusedPeerId ? 'shrink-0 w-24 md:w-44 opacity-80 hover:opacity-100 transition-all hover:scale-105' : 'w-full'}>
+                                        <VideoTile 
+                                            stream={peer.stream} 
+                                            role={peer.role} 
+                                            codename={peer.codename} 
+                                            isEnhanced={isEnhanced} 
+                                            onAddContact={() => addToContacts(peer.peerId, peer.codename)} 
+                                            onKick={isHost ? () => kickPeer(peer.peerId) : undefined}
+                                            onRefresh={() => connectToPeer(peer.peerId)}
+                                            isLowLight={isLowLight} 
+                                            onClick={() => setFocusedPeerId(peer.peerId)}
+                                        />
+                                    </div>
                                 ))}
                             </div>
                             <div className="mt-12 flex flex-wrap justify-center gap-4">
@@ -1117,44 +1595,75 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 </div>
 
                 {showChat && (
-                    <aside className="w-80 bg-[#020202] border-l border-white/5 flex flex-col animate-in slide-in-from-right duration-300 z-[60]">
-                        <div className="h-14 px-6 border-b border-white/5 flex items-center justify-between">
+                    <aside className="w-80 bg-black/40 backdrop-blur-xl border-l border-white/5 flex flex-col animate-in slide-in-from-right duration-300 z-[60] shadow-2xl">
+                        <div className="h-14 px-6 border-b border-white/10 flex items-center justify-between bg-black/20">
                             <div className="flex items-center gap-3">
                                 <MessageSquare size={14} className="text-cyan-500" />
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white">Chat</span>
+                                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">Secure Channel</span>
                             </div>
-                            <button onClick={() => setShowChat(false)} className="text-zinc-800 hover:text-white"><ChevronRight size={18} /></button>
+                            <button onClick={() => setShowChat(false)} className="text-zinc-500 hover:text-white transition-colors"><ChevronRight size={20} /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-                            {messages.map((msg) => (
-                                <div key={msg.id} className={`flex flex-col ${msg.senderId === 'SYSTEM' ? 'items-center' : msg.senderId.includes(peerRef.current?.id || '!!') ? 'items-end' : 'items-start'}`}>
-                                    {msg.senderId !== 'SYSTEM' && <span className="text-[7px] font-black text-zinc-700 uppercase mb-1">{msg.senderName}</span>}
-                                    <div className={`px-3 py-2 text-[10px] font-mono leading-relaxed max-w-[90%] rounded-sm ${msg.senderId === 'SYSTEM' ? 'text-zinc-500 text-[8px] tracking-widest py-4' : msg.senderId.includes(peerRef.current?.id || '!!') ? 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400' : 'bg-white/[0.02] border border-white/5 text-zinc-400'}`}>{msg.text}</div>
-                                </div>
-                            ))}
+                        
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar bg-gradient-to-b from-transparent to-black/20">
+                            {messages.map((msg, idx) => {
+                                const isSelf = msg.senderId.includes(peerRef.current?.id || '!!');
+                                const isSystem = msg.senderId === 'SYSTEM';
+                                const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                                
+                                if (isSystem) {
+                                    return (
+                                        <div key={msg.id} className="flex justify-center my-2">
+                                            <span className="px-4 py-1 rounded-full bg-white/[0.03] text-[8px] font-black text-zinc-600 uppercase tracking-widest border border-white/5">{msg.text}</span>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div key={msg.id} className={`flex items-end gap-2 ${isSelf ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        {!isSelf && (
+                                            <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-white/5 shadow-lg" style={{ backgroundColor: getAvatarColor(msg.senderName) }}>
+                                                <span className="text-[10px] font-black text-white">{msg.senderName.substring(0, 1)}</span>
+                                            </div>
+                                        )}
+                                        <div className={`relative group max-w-[75%] px-3.5 py-2 rounded-2xl shadow-lg border ${isSelf ? 'bg-gradient-to-br from-cyan-600 to-cyan-800 border-cyan-500/30 text-white rounded-br-none' : 'bg-zinc-900/80 border-white/5 text-zinc-300 rounded-bl-none'}`}>
+                                            {!isSelf && (
+                                                <div className="text-[9px] font-black uppercase mb-1 opacity-80" style={{ color: getAvatarColor(msg.senderName) }}>
+                                                    {msg.senderName}
+                                                </div>
+                                            )}
+                                            <div className="text-[11px] leading-relaxed font-medium break-words">{msg.text}</div>
+                                            <div className={`flex items-center justify-end gap-1 mt-1 opacity-40 group-hover:opacity-100 transition-opacity`}>
+                                                <span className="text-[7px] font-mono">{timeStr}</span>
+                                                {isSelf && <Check size={8} className="text-white/60" />}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                             <div ref={chatEndRef} />
                         </div>
-                        <div className="p-4 border-t border-white/5 space-y-3 relative">
-                            {showEmojis && !isGuest && (
-                                <div className="absolute bottom-full left-0 right-0 p-3 bg-black border border-white/5 grid grid-cols-5 gap-2 animate-in slide-in-from-bottom-2 duration-300 z-50 shadow-2xl">
+
+                        <div className="p-4 border-t border-white/10 bg-black/40">
+                             {showEmojis && !isGuest && (
+                                <div className="absolute bottom-full left-4 right-4 mb-2 p-3 bg-zinc-900 border border-white/10 grid grid-cols-5 gap-2 rounded-xl animate-in slide-in-from-bottom-2 duration-300 z-50 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
                                     {EMOJIS.map(e => (
-                                        <button key={e} onClick={() => { setChatInput(prev => prev + e); setShowEmojis(false); }} className="text-xl hover:scale-125 transition-transform p-2 bg-white/[0.02] border border-white/5 hover:border-cyan-500/20">{e}</button>
+                                        <button key={e} onClick={() => { setChatInput(prev => prev + e); setShowEmojis(false); }} className="text-xl hover:scale-125 transition-transform p-2 hover:bg-white/5 rounded-lg">{e}</button>
                                     ))}
                                 </div>
                             )}
-                            <div className="relative flex gap-2">
+                            <div className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-2xl px-1 py-1 focus-within:border-cyan-500/50 transition-all">
+                                <button onClick={() => setShowEmojis(!showEmojis)} className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${showEmojis ? 'bg-cyan-500/20 text-cyan-400' : 'text-zinc-500 hover:text-white'}`}>👻</button>
                                 <input 
-                                    className="flex-1 bg-[#050505] border border-white/10 py-3 pl-4 pr-10 text-[10px] text-white focus:outline-none focus:border-cyan-500/30 font-mono italic" 
-                                    placeholder={isGuest ? "READ_ONLY_MODE..." : "Type a message..."} 
+                                    className="flex-1 bg-transparent py-2 px-2 text-[11px] text-white focus:outline-none placeholder:text-zinc-700" 
+                                    placeholder={isGuest ? "READ_ONLY..." : "Message..."} 
                                     value={chatInput} 
                                     onChange={(e) => setChatInput(e.target.value)} 
                                     onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
                                     disabled={isGuest}
                                 />
-                                {!isGuest && (
-                                    <button onClick={() => setShowEmojis(!showEmojis)} className={`w-10 h-10 flex items-center justify-center border border-white/5 hover:border-cyan-500/20 transition-all ${showEmojis ? 'bg-cyan-500 text-black' : 'text-zinc-600'}`}>👻</button>
-                                )}
-                                <button onClick={sendMessage} disabled={isGuest} className={`text-zinc-700 hover:text-cyan-500 transition-colors ${isGuest ? 'opacity-0 pointer-events-none' : ''}`}><Send size={14} /></button>
+                                <button onClick={sendMessage} disabled={isGuest || !chatInput.trim()} className={`w-8 h-8 flex items-center justify-center rounded-full transition-all ${chatInput.trim() ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(0,255,255,0.3)]' : 'text-zinc-800'}`}>
+                                    <Send size={14} />
+                                </button>
                             </div>
                         </div>
                     </aside>

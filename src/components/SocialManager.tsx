@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { UserPlus, User, MessageSquare, Trash2, X, Search, Activity, ShieldAlert, Check, Zap, Target, Globe } from 'lucide-react';
 import { meshNodes, gun } from '../lib/gun';
 
+const getAvatarColor = (name: string) => {
+    const hues = [210, 260, 280, 20, 140, 180, 330]; 
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return `hsl(${hues[Math.abs(hash) % hues.length]}, 65%, 55%)`;
+};
+
 interface SocialManagerProps {
     currentUser: { username: string; name: string; isAdmin?: boolean };
     onClose: () => void;
@@ -128,22 +135,21 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                     </div>
 
                     {searchResult && (
-                         <div className="mt-4 p-6 bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-[0_0_30px_rgba(0,229,255,0.1)] group/result relative overflow-hidden">
-                            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-transparent opacity-0 group-hover/result:opacity-100 transition-opacity" />
-                            <div className="flex items-center gap-4 relative z-10">
-                                <div className="w-12 h-12 rounded-sm bg-cyan-500 flex items-center justify-center text-black shadow-[0_0_25px_rgba(0,229,255,0.5)]">
-                                    <Target size={24} className="animate-spin-slow" />
-                                </div>
-                                <div>
-                                    <span className="block text-[12px] font-black text-white tracking-widest">{searchResult.username}</span>
-                                    <span className="block text-[8px] text-cyan-500 uppercase font-black">{searchResult.name}</span>
-                                </div>
+                     <div className="mt-4 p-5 bg-cyan-500/5 border border-cyan-500/20 rounded-xl flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-xl group/result relative overflow-hidden">
+                        <div className="flex items-center gap-4 relative z-10">
+                            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg border border-white/10" style={{ backgroundColor: getAvatarColor(searchResult.username) }}>
+                                <span className="text-sm font-black">{searchResult.username[0]}</span>
                             </div>
-                            <button onClick={addFriend} className="px-8 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500 transition-all shadow-xl">
-                                ADD_TO_CONTACTS
-                            </button>
+                            <div>
+                                <span className="block text-[13px] font-black text-white tracking-widest">{searchResult.username}</span>
+                                <span className="block text-[8px] text-cyan-500 uppercase font-black">{searchResult.name}</span>
+                            </div>
                         </div>
-                    )}
+                        <button onClick={addFriend} className="px-6 py-2.5 bg-cyan-500 text-black text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all rounded-full shadow-lg">
+                            Add Contact
+                        </button>
+                    </div>
+                )}
 
                     {statusMsg && (
                         <div className="mt-4 text-center text-[8px] font-black text-zinc-800 uppercase tracking-[0.3em] italic animate-pulse">
@@ -161,27 +167,27 @@ export const SocialManager: React.FC<SocialManagerProps> = ({ currentUser, onClo
                         </div>
                     ) : (
                         friends.map(friend => (
-                            <div key={friend.username} className="p-4 bg-white/[0.02] border border-white/5 hover:border-cyan-500/20 transition-all flex items-center justify-between group">
-                                <div className="flex items-center gap-5">
-                                    <div className="w-12 h-12 rounded-sm bg-black border border-white/5 flex items-center justify-center group-hover:bg-cyan-500 group-hover:text-black transition-all shadow-inner">
-                                        <Activity size={20} className="text-cyan-900 group-hover:text-black" />
+                            <div key={friend.username} className="p-4 bg-white/[0.02] border border-white/5 hover:border-cyan-500/20 transition-all flex items-center justify-between group rounded-xl">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full flex items-center justify-center text-white border border-white/5 shadow-lg transition-transform group-hover:scale-105" style={{ backgroundColor: getAvatarColor(friend.username) }}>
+                                        <span className="text-sm font-black">{friend.username[0]}</span>
                                     </div>
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[12px] font-black uppercase text-white tracking-widest">{friend.username}</span>
-                                            <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="text-[13px] font-black uppercase text-white tracking-widest">{friend.username}</span>
+                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
                                         </div>
-                                        <span className="text-[8px] font-mono text-zinc-700 uppercase mt-1 tracking-tight">{friend.name}</span>
+                                        <span className="text-[8px] font-mono text-zinc-600 uppercase mt-0.5 tracking-tight">{friend.name}</span>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => onStartChat(friend)}
-                                        className="h-10 px-4 flex items-center justify-center gap-3 bg-cyan-500 text-black rounded-sm hover:bg-cyan-400 transition-all shadow-[0_0_20px_rgba(0,229,255,0.3)] group/btn"
+                                        className="h-10 px-5 flex items-center justify-center gap-3 bg-zinc-900 border border-white/5 text-cyan-500 rounded-full hover:bg-cyan-500 hover:text-black transition-all group/btn"
                                         title="Instant Message"
                                     >
                                         <MessageSquare size={16} />
-                                        <span className="text-[10px] font-black uppercase tracking-widest pr-2 border-l border-black/10 pl-3">START_CHAT</span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest">Chat</span>
                                     </button>
                                     <button
                                         onClick={() => removeFriend(friend.username)}

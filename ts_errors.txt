@@ -1,2 +1,0 @@
-﻿src/components/AdminDashboard.tsx(6,1): error TS6133: 'NotificationService' is declared but its value is never read.
-src/services/NotificationService.ts(2,1): error TS6133: 'SystemLog' is declared but its value is never read.
