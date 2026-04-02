@@ -9,7 +9,8 @@ import {
   Moon,
   Shield,
   MessageSquare,
-  UserPlus
+  UserPlus,
+  Send
 } from 'lucide-react';
 import { Logo } from './components/Logo';
 import MeetCall from './components/MeetCall';
@@ -198,6 +199,18 @@ const App: React.FC = () => {
         setIsMeetActive(true);
       }, 500);
       return () => clearTimeout(timer);
+    }
+    
+    // REDIRECTION LOGIC: Handle chat vs meet target
+    if (currentUser && !isMeetActive) {
+      const target = sessionStorage.getItem('auth_target');
+      if (target === 'chat') {
+        setShowSocialManager(true);
+        sessionStorage.removeItem('auth_target');
+      } else if (target === 'meet' && !joinRoomId) {
+        // Optional: Trigger "New Meeting" flow automatically if requested
+        sessionStorage.removeItem('auth_target');
+      }
     }
   }, [currentUser, joinRoomId, isMeetActive]);
 

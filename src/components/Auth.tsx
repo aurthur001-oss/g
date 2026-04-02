@@ -4,6 +4,7 @@ import { Logo } from './Logo';
 import { meshNodes } from '../lib/gun';
 import { supabase, isCloudBackupActive } from '../lib/supabase';
 import { NotificationService } from '../services/NotificationService';
+import { getPublicIP } from '../lib/ip';
 
 interface AuthProps {
     onAuthenticate: (user: { username: string; name: string; isAdmin?: boolean; ip?: string }) => void;
@@ -29,11 +30,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
     const [isSyncing, setIsSyncing] = useState(false);
 
     useEffect(() => {
-        // Simple IP detection
-        fetch('https://api.ipify.org?format=json')
-            .then(res => res.json())
-            .then(data => setUserIp(data.ip))
-            .catch(() => setUserIp('COULD_NOT_DETECT'));
+        getPublicIP().then(setUserIp);
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -83,7 +80,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                     username: foundUser.username,
                     name: foundUser.name,
                     isAdmin: foundUser.isAdmin,
-                    ip: userIp
+                    ip_address: userIp
                 };
                 localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
                 onAuthenticate(sessionUser);
@@ -118,7 +115,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
             name: regName,
             isAdmin: regName.toUpperCase() === 'ADMIN',
             timestamp: Date.now(),
-            ip: userIp
+            ip_address: userIp
         };
 
         try {
@@ -133,7 +130,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
 
             await NotificationService.notifyNewNodeRegistration(regUser, regName);
 
-            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: newUser.isAdmin, ip: userIp };
+            const sessionUser = { username: newUser.username, name: newUser.name, isAdmin: newUser.isAdmin, ip_address: userIp };
             localStorage.setItem('ghost_session', JSON.stringify(sessionUser));
             onAuthenticate(sessionUser);
         } catch (err: any) {
@@ -159,7 +156,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                     username: 'SHADOW_ADMIN',
                     name: 'SYSTEM ADMINISTRATOR',
                     isAdmin: true,
-                    ip: userIp
+                    ip_address: userIp
                 };
                 onAuthenticate(adminUser);
                 setIsSyncing(false);
@@ -173,7 +170,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
                 username: `GUEST-${guestId}`,
                 name: guestName.toUpperCase() || `GUEST PARTICIPANT ${guestId}`,
                 isAdmin: false,
-                ip: userIp
+                ip_address: userIp
             };
             sessionStorage.setItem('ghost_guest_session', JSON.stringify(guestUser));
             onAuthenticate(guestUser);
@@ -184,58 +181,64 @@ export const Auth: React.FC<AuthProps> = ({ onAuthenticate }) => {
     return (
         <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-start p-4 md:p-12 relative overflow-x-hidden mesh-grid">
             <div className="absolute inset-0 bg-gradient-to-b from-[var(--accent)]/5 via-transparent to-transparent opacity-20 pointer-events-none" />
+            <div className="w-full bg-red-600 text-white py-1 px-4 text-center text-[10px] font-black uppercase tracking-[0.5em] animate-pulse z-[100] relative">
+                BETA_MESSENGER_V2_DEPLOYED_ACK
+            </div>
 
             <div className="w-full max-w-6xl relative animate-in fade-in zoom-in-95 duration-700 flex flex-col gap-8 pt-12 md:pt-24 z-10">
                 <div className="flex flex-col items-center text-center">
                     <Logo size={64} className="mb-6" animate={true} />
-                    <h1 className="text-3xl md:text-5xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">Communication Suite</h1>
-                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.5em] mt-2 px-12 opacity-80">Secure Video Meetings & Telegram Messenger</p>
+                    <h1 className="text-3xl md:text-6xl font-light uppercase tracking-tighter text-[var(--text)] italic chromatic leading-tight">Video Conference 🐱</h1>
+                    <p className="text-[9px] md:text-[11px] font-black text-[var(--accent)] uppercase tracking-[0.6em] mt-2 px-12 opacity-80">Simple, Secure, P2P Meetings 🐶</p>
                     
                     {sessionStorage.getItem('pending_host') && (
-                        <div className="mt-6 px-6 py-2 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse">
-                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest italic">JOINING_{sessionStorage.getItem('pending_host')}_MEETING</span>
+                        <div className="mt-10 px-8 py-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-full animate-pulse shadow-[0_0_30px_rgba(0,229,255,0.1)]">
+                            <span className="text-[10px] font-black text-cyan-500 uppercase tracking-widest italic">JOINING_{sessionStorage.getItem('pending_host')}_MEETING_UPLINK</span>
                         </div>
                     )}
                 </div>
 
                 {view === 'guest' ? (
                     <div className="w-full max-w-md mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-                        <form onSubmit={handleGuestLogin} className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.3em] pl-1">Identification Required</label>
+                        <form onSubmit={handleGuestLogin} className="space-y-10">
+                            <div className="space-y-4">
+                                <label className="text-[8px] font-black text-[var(--subtext)] uppercase tracking-[0.4em] pl-1 opacity-60">Your Display Name</label>
                                 <div className="relative group">
-                                    <Terminal className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--subtext)] group-focus-within:text-[var(--accent)] transition-colors" size={16} />
+                                    <Terminal className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--subtext)] group-focus-within:text-[var(--accent)] transition-colors opacity-40" size={18} />
                                     <input
                                         type="text"
-                                        className="w-full bg-[var(--panel)] border border-[var(--border)] py-5 pl-12 pr-4 text-[var(--text)] text-[12px] uppercase font-mono tracking-widest focus:outline-none focus:border-[var(--accent)]/40 focus:ring-1 focus:ring-[var(--accent)]/20 transition-all placeholder:text-zinc-800"
-                                        placeholder="ENTER_DISPLAY_NAME..."
+                                        className="w-full bg-[var(--panel)] border border-[var(--border)] py-6 pl-14 pr-4 text-[var(--text)] text-[13px] uppercase font-mono tracking-[0.2em] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/10 transition-all placeholder:text-zinc-800"
+                                        placeholder="ENTER_NAME_OR_PROCEED_AS_GUEST"
                                         value={guestName}
                                         onChange={e => setGuestName(e.target.value.toUpperCase())}
                                     />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={isSyncing}
-                                    onClick={() => sessionStorage.setItem('auth_target', 'meet')}
-                                    className="py-6 bg-white text-black text-[11px] font-black uppercase tracking-[0.4em] hover:bg-cyan-500 hover:scale-[1.02] transition-all flex flex-col items-center justify-center gap-3 group shadow-2xl relative overflow-hidden"
-                                >
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <Video size={24} className="relative z-10" />
-                                    <span className="relative z-10">Join Meeting</span>
-                                </button>
+                            <button
+                                type="submit"
+                                disabled={isSyncing}
+                                onClick={() => sessionStorage.setItem('auth_target', 'meet')}
+                                className="w-full py-7 bg-cyan-500 text-black text-[13px] font-black uppercase tracking-[0.5em] hover:bg-white transition-all flex items-center justify-center gap-6 group shadow-[0_0_50px_rgba(0,229,255,0.15)] relative overflow-hidden active:scale-[0.98]"
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <span className="relative z-10">Join _ Meeting</span>
+                                <ArrowRight className="relative z-10 group-hover:translate-x-2 transition-transform" size={20} />
+                            </button>
 
+                            <div className="pt-4">
                                 <button
-                                    type="submit"
+                                    type="button"
                                     disabled={isSyncing}
-                                    onClick={() => sessionStorage.setItem('auth_target', 'chat')}
-                                    className="py-6 bg-black border border-white/10 text-white text-[11px] font-black uppercase tracking-[0.4em] hover:border-cyan-500/60 hover:scale-[1.02] transition-all flex flex-col items-center justify-center gap-3 group shadow-2xl relative overflow-hidden"
+                                    onClick={() => {
+                                        sessionStorage.setItem('auth_target', 'chat');
+                                        handleGuestLogin();
+                                    }}
+                                    className="w-full py-5 bg-white/5 border border-cyan-500/30 text-white text-[11px] font-black uppercase tracking-[0.4em] hover:bg-cyan-500 hover:text-black transition-all flex items-center justify-center gap-4 group relative overflow-hidden active:scale-[0.98] rounded-sm"
                                 >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <Send size={24} className="text-cyan-500 relative z-10" />
-                                    <span className="relative z-10 italic">Messenger</span>
+                                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <Send size={18} className="text-cyan-500 relative z-10 animate-pulse" />
+                                    <span className="relative z-10">Launch Ghost Messenger 🐾</span>
                                 </button>
                             </div>
                         </form>

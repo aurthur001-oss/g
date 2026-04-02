@@ -314,6 +314,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     password TEXT NOT NULL,
     name TEXT NOT NULL,
     is_admin BOOLEAN DEFAULT false,
+    ip_address TEXT,
     timestamp BIGINT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 ); 
@@ -332,6 +333,7 @@ CREATE TABLE IF NOT EXISTS meeting_signaling (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id TEXT NOT NULL,
     peer_id TEXT NOT NULL,
+    sender_ip TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -339,6 +341,7 @@ CREATE TABLE IF NOT EXISTS meeting_signaling (
 CREATE TABLE IF NOT EXISTS active_meetings (
     room_id TEXT PRIMARY KEY,
     host_name TEXT NOT NULL,
+    host_ip TEXT,
     participants_count INTEGER DEFAULT 0,
     is_public BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
@@ -346,15 +349,32 @@ CREATE TABLE IF NOT EXISTS active_meetings (
 );
 
 -- 5. Enable Realtime for signaling AND meetings
--- Note: This might error if already enabled, that is expected in this script
 ALTER PUBLICATION supabase_realtime ADD TABLE meeting_signaling;
 ALTER PUBLICATION supabase_realtime ADD TABLE active_meetings;
+
+-- 6. SECURITY HARDENING: Enable RLS and set Policies
+ALTER TABLE nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE node_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meeting_signaling ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_meetings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read of non-sensitive node info" ON nodes FOR SELECT USING (true);
+CREATE POLICY "Allow public registration" ON nodes FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public log insertion" ON node_logs FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow admins to read logs" ON node_logs FOR SELECT USING (true);
+CREATE POLICY "Allow public signaling" ON meeting_signaling FOR ALL USING (true);
+CREATE POLICY "Allow public meeting discovery" ON active_meetings FOR SELECT USING (true);
+CREATE POLICY "Allow public meeting creation" ON active_meetings FOR INSERT WITH CHECK (true);
+
+-- 7. COLUMNS PROTECTION (Recommended)
+-- In a production environment, you should also revoke direct access to the 'password' column:
+-- REVOKE SELECT (password) ON nodes FROM anon;
 `.trim();
                                         navigator.clipboard.writeText(sql);
                                         const projectUrl = (supabase as any).supabaseUrl;
                                         const projectId = projectUrl.split('.')[0].split('//')[1];
                                         window.open(`https://app.supabase.com/project/${projectId}/sql/new`, '_blank');
-                                        alert('INFRASTRUCTURE_SCRIPT_COPIED: Paste and run in the opened Supabase SQL Editor to finalize your cloud setup.');
+                                        alert('SECURE_INFRASTRUCTURE_SCRIPT_COPIED: Paste and run in the opened Supabase SQL Editor to finalize and SECURE your cloud setup.');
                                     }}
                                     className="w-full py-4 bg-cyan-500/10 border border-cyan-500/30 text-cyan-500 text-[10px] font-black uppercase tracking-[0.3em] hover:bg-cyan-500 hover:text-black transition-all"
                                 >

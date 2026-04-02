@@ -121,12 +121,24 @@ export const DirectChat: React.FC<DirectChatProps> = ({ currentUser, recipient, 
                 })}
             </div>
 
-            <form onSubmit={handleSendMessage} className="p-4 bg-black/40 border-t border-white/5">
+            <form onSubmit={handleSendMessage} className="p-4 bg-black/40 border-t border-white/5 space-y-4">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                    {['🐱', '🐶', '🐈', '🐕', '🐾', '🥨', '🌈', '✨', '💖'].map(emoji => (
+                        <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => setInputText(prev => prev + emoji)}
+                            className="text-lg hover:scale-125 transition-transform p-1.5 bg-white/5 rounded-lg hover:bg-white/10"
+                        >
+                            {emoji}
+                        </button>
+                    ))}
+                </div>
                 <div className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-2xl px-1 py-1 focus-within:border-cyan-500/50 transition-all">
-                    <button type="button" className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-white transition-all hover:bg-white/5">👻</button>
+                    <button type="button" className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-white transition-all hover:bg-white/5">🐶</button>
                     <input
-                        className="flex-1 bg-transparent py-2 px-2 text-[11px] text-white focus:outline-none placeholder:text-zinc-800 font-medium"
-                        placeholder="Message..."
+                        className="flex-1 bg-transparent py-2.5 px-2 text-[11px] text-white focus:outline-none placeholder:text-zinc-800 font-medium"
+                        placeholder="Say something cute... 🐾"
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
                     />

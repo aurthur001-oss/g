@@ -34,6 +34,7 @@ import Peer, { type DataConnection } from 'peerjs';
 import { Logo } from './Logo';
 import type { NodeRole, ChatMessage } from '../types';
 import { supabase, isCloudBackupActive } from '../lib/supabase';
+import { getPublicIP } from '../lib/ip';
 
 const CODENAMES = [
     'Specter', 'Wraith', 'Phantom', 'Banshee', 'Shade', 'Poltergeist',
@@ -83,39 +84,6 @@ interface VideoTileProps {
 
 // --- Helper Components (Hoisted to avoid TDZ) ---
 
-// --- Audio Processing for Fan Noise Suppression ---
-const applyAudioProcess = (stream: MediaStream) => {
-    try {
-        const audioTrack = stream.getAudioTracks()[0];
-        if (!audioTrack) return stream;
-        
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ latencyHint: 'interactive' });
-        const source = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
-        
-        // High-pass filter to kill low-frequency fan drone (180Hz threshold)
-        const hpf = audioContext.createBiquadFilter();
-        hpf.type = 'highpass';
-        hpf.frequency.value = 180;
-        hpf.Q.value = 0.7;
-        
-        // Band-pass filter to prioritize human vocal range (300Hz - 3400Hz)
-        const bpf = audioContext.createBiquadFilter();
-        bpf.type = 'peaking';
-        bpf.frequency.value = 2000;
-        bpf.Q.value = 0.5;
-        bpf.gain.value = 3;
-        
-        const destination = audioContext.createMediaStreamDestination();
-        source.connect(hpf);
-        hpf.connect(bpf);
-        bpf.connect(destination);
-        
-        return destination.stream;
-    } catch (e) {
-        console.warn('[AUDIO_PROC] Failed to initialize WebAudio filters:', e);
-        return stream;
-    }
-};
 
 const getAvatarColor = (name: string) => {
     const hues = [210, 260, 280, 20, 140, 180, 330]; 
@@ -458,7 +426,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const [showEmojis, setShowEmojis] = useState(false);
     const [lobbyPeers, setLobbyPeers] = useState<{peerId: string, codename: string}[]>([]);
     const [isAdmitted, setIsAdmitted] = useState(isHost);
-    const EMOJIS = ['👻', '✨', '💎', '🔥', '🚀', '🔒', '🦾', '🎯', '⚡', '🛸'];
+    const EMOJIS = ['🐱', '🐶', '🐈', '🐕', '🐾', '👻', '✨', '💎', '🔥', '🚀', '🔒', '🦾', '🎯', '⚡', '🛸'];
 
     const peerRef = useRef<Peer | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
@@ -469,6 +437,12 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
     const chatEndRef = useRef<HTMLDivElement>(null);
     const admittedPeersRef = useRef<Set<string>>(new Set());
     const lastSyncRef = useRef<number>(Date.now());
+
+    const [userIp, setUserIp] = useState<string>('0.0.0.0');
+
+    useEffect(() => {
+        getPublicIP().then(setUserIp);
+    }, []);
 
     // WhatsApp UX: Auto-focus the remote peer in 1-on-1 sessions
     useEffect(() => {
@@ -724,9 +698,11 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
               // C. Active Meeting Registry (Host Only)
               if (isHost || myRole === 'origin') {
                   const registerMeeting = async () => {
+                      const ip = await getPublicIP();
                       await (supabase as any).from('active_meetings').upsert({
                           room_id: roomId,
                           host_name: userName || myCodename,
+                          host_ip: ip,
                           is_public: true,
                           last_pulse: new Date().toISOString()
                       });
@@ -882,7 +858,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                     (supabase as any).from('meeting_signaling').insert({
                         room_id: roomId,
                         peer_id: myId,
-                        codename: myCodename
+                        codename: myCodename,
+                        sender_ip: userIp
                     });
                 }
                 
@@ -1290,6 +1267,7 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 target_id: peerId, // to participant
                 type: 'SIGNAL',
                 data: { type: 'LOBBY_ADMIT' },
+                sender_ip: userIp,
                 created_at: new Date().toISOString()
             });
         }
@@ -1332,38 +1310,6 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                 }, 4000);
             }
         }, 30);
-    };
-
-    const admitPeer = (peerId: string) => {
-        const conn = dataConnsRef.current.get(peerId);
-        if (conn) {
-            conn.send({ type: 'LOBBY_ADMIT' });
-        }
-        
-        // Cloud Fallback: Send admission via Supabase if P2P is slow
-        if (isCloudBackupActive()) {
-            (supabase as any).from('meeting_signaling').insert({
-                room_id: roomId,
-                peer_id: peerRef.current?.id,
-                target_id: peerId,
-                type: 'SIGNAL',
-                data: { type: 'LOBBY_ADMIT' }
-            });
-        }
-
-        admittedPeersRef.current.add(peerId);
-        setLobbyPeers(prev => prev.filter(p => p.peerId !== peerId));
-        
-        // IMPORTANT: The Host always initiates the call after admission to ensure stability
-        const streamToSend = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStreamRef.current;
-        const call = peerRef.current?.call(peerId, streamToSend || new MediaStream());
-        if (call) {
-            call.on('stream', (s) => handleRemoteStream(peerId, s));
-            call.on('close', () => removePeer(peerId));
-            callsRef.current.set(peerId, call);
-        }
-        
-        addSystemMessage(`ADMITTED PARTICIPANT: ${peerId}`);
     };
 
     const kickPeer = (peerId: string) => {
@@ -1508,8 +1454,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                                     {isConnecting ? <Loader2 size={24} className="text-cyan-500 animate-spin" /> : <Shield size={24} className="text-cyan-900" />}
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-light uppercase tracking-tight text-white italic">Meeting Session</h2>
-                                    <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-1">Meeting ID: {roomId}</p>
+                                    <h2 className="text-lg font-light uppercase tracking-tight text-white italic">Meeting Session 🐱</h2>
+                                    <p className="text-[8px] font-black text-zinc-800 uppercase tracking-widest mt-1">Meeting ID: {roomId} 🐶</p>
                                 </div>
                             </div>
                             <h3 className="text-2xl font-light uppercase tracking-tight text-white mb-2 italic">Security Clearance</h3>
@@ -1537,8 +1483,8 @@ const MeetCall: React.FC<MeetCallProps> = ({ onClose, externalRoomId, userName, 
                                     <div className="absolute inset-0 bg-cyan-500/5 filter blur-2xl rounded-full" />
                                 </div>
                                 <div className="space-y-3">
-                                    <h3 className="text-2xl font-light uppercase tracking-[0.2em] text-white italic">Lobby Area</h3>
-                                    <p className="text-[10px] font-black text-cyan-500/60 uppercase tracking-[0.4em] animate-pulse">Waiting for Admission...</p>
+                                    <h3 className="text-2xl font-light uppercase tracking-[0.2em] text-white italic">Lobby Area 🐈</h3>
+                                    <p className="text-[10px] font-black text-cyan-500/60 uppercase tracking-[0.4em] animate-pulse">Waiting for Admission... 🐕</p>
                                 </div>
                                 <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 <p className="text-[8px] font-mono text-zinc-600 uppercase leading-relaxed max-w-[240px]">The host has been notified of your request. You will be automatically moved to the meeting once admitted.</p>
